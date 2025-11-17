@@ -13,6 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
     <style>
+        /* Ваши существующие стили остаются без изменений */
         :root {
             --primary-color: #2F6BFF;
             --primary-gradient: linear-gradient(135deg, #2F6BFF, #8A2BE2);
@@ -344,6 +345,7 @@
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 10px;
             padding: 20px;
+            overflow-y: auto;
         }
 
         .participant-video {
@@ -355,6 +357,13 @@
             align-items: center;
             justify-content: center;
             color: white;
+            overflow: hidden;
+        }
+
+        .participant-video video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .participant-name {
@@ -365,6 +374,7 @@
             padding: 5px 10px;
             border-radius: 20px;
             font-size: 14px;
+            z-index: 10;
         }
 
         .meeting-controls {
@@ -385,6 +395,7 @@
             justify-content: center;
             color: white;
             cursor: pointer;
+            border: none;
         }
 
         .control-btn-meeting.end-call {
@@ -712,6 +723,18 @@
             display: block;
         }
 
+        /* Video elements */
+        .video-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            background: #2D3748;
+            color: white;
+        }
+
         @media (max-width: 768px) {
             .hero h1 {
                 font-size: 36px;
@@ -899,10 +922,7 @@
                     </div>
                 </div>
                 <div class="participants-grid" id="participants-grid">
-                    <div class="participant-video">
-                        <i class="fas fa-user" style="font-size: 48px;"></i>
-                        <div class="participant-name">Вы</div>
-                    </div>
+                    <!-- Video elements will be added here dynamically -->
                 </div>
                 <div class="meeting-controls">
                     <div class="control-btn-meeting" id="mic-toggle">
@@ -910,6 +930,9 @@
                     </div>
                     <div class="control-btn-meeting" id="camera-toggle">
                         <i class="fas fa-video"></i>
+                    </div>
+                    <div class="control-btn-meeting" id="screen-share">
+                        <i class="fas fa-desktop"></i>
                     </div>
                     <div class="control-btn-meeting end-call" onclick="leaveMeeting()">
                         <i class="fas fa-phone-slash"></i>
@@ -941,10 +964,7 @@
                 <div class="participants-list">
                     <h4>Участники</h4>
                     <div id="participants-list">
-                        <div class="participant-item">
-                            <div class="participant-avatar">В</div>
-                            <div>Вы (организатор)</div>
-                        </div>
+                        <!-- Participants will be added here dynamically -->
                     </div>
                 </div>
                 <div class="chat-container">
@@ -1054,7 +1074,7 @@
     </div>
 
     <script>
-        // Firebase configuration - ЗАМЕНИТЕ НА ВАШИ ДАННЫЕ
+        // Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyDA2X_spewEa5-N1h-aUoswCfYqlQzUaEk",
             authDomain: "meetly-2add6.firebaseapp.com",
@@ -1082,6 +1102,14 @@
         let isCameraOn = true;
         let chatRef = null;
         let meetingRef = null;
+        let participantsRef = null;
+        
+        // WebRTC variables
+        let localStream = null;
+        let peerConnections = {};
+        let localVideoElement = null;
+        let screenStream = null;
+        let isScreenSharing = false;
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
@@ -1105,6 +1133,7 @@
             // Meeting controls
             document.getElementById('mic-toggle').addEventListener('click', toggleMic);
             document.getElementById('camera-toggle').addEventListener('click', toggleCamera);
+            document.getElementById('screen-share').addEventListener('click', toggleScreenShare);
             document.getElementById('chat-input').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') sendMessage();
             });
@@ -1333,7 +1362,8 @@
                 participants: {
                     [currentUser.uid]: {
                         name: userName,
-                        joinedAt: firebase.database.ServerValue.TIMESTAMP
+                        joinedAt: firebase.database.ServerValue.TIMESTAMP,
+                        isOnline: true
                     }
                 },
                 createdAt: firebase.database.ServerValue.TIMESTAMP,
@@ -1400,15 +1430,20 @@
                     }
                     
                     // Add user to participants if not already there
-                    if (!currentMeeting.participants[currentUser.uid]) {
+                    if (!currentMeeting.participants || !currentMeeting.participants[currentUser.uid]) {
                         const userName = currentUser.displayName || currentUser.email.split('@')[0];
                         return database.ref('meetings/' + meetingId + '/participants/' + currentUser.uid).set({
                             name: userName,
-                            joinedAt: firebase.database.ServerValue.TIMESTAMP
+                            joinedAt: firebase.database.ServerValue.TIMESTAMP,
+                            isOnline: true
                         });
+                    } else {
+                        // Update participant status
+                        return database.ref('meetings/' + meetingId + '/participants/' + currentUser.uid + '/isOnline').set(true);
                     }
                 })
                 .then(() => {
+                    closeModal('join-meeting-modal');
                     showMeetingPage();
                 })
                 .catch((error) => {
@@ -1437,20 +1472,116 @@
                 cameraIcon.className = isCameraOn ? 'fas fa-video' : 'fas fa-video-slash';
             }
             
+            // Initialize video and audio
+            initializeMedia();
+            
             // Set up realtime listeners
             setupMeetingListeners();
             
             showPage('meeting');
         }
 
+        // Initialize media devices
+        async function initializeMedia() {
+            try {
+                // Get user media
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: isCameraOn,
+                    audio: isMicOn
+                });
+                
+                // Create video element for local stream
+                createLocalVideoElement();
+                
+                // Add local participant to the grid
+                addParticipantToGrid(currentUser.uid, currentUser.displayName || currentUser.email.split('@')[0], true);
+                
+            } catch (error) {
+                console.error('Error accessing media devices:', error);
+                alert('Не удалось получить доступ к камере или микрофону. Пожалуйста, проверьте разрешения.');
+                
+                // Create placeholder even if media access fails
+                createLocalVideoElement();
+                addParticipantToGrid(currentUser.uid, currentUser.displayName || currentUser.email.split('@')[0], true);
+            }
+        }
+
+        // Create local video element
+        function createLocalVideoElement() {
+            const participantsGrid = document.getElementById('participants-grid');
+            participantsGrid.innerHTML = '';
+            
+            const videoContainer = document.createElement('div');
+            videoContainer.className = 'participant-video';
+            videoContainer.id = `participant-${currentUser.uid}`;
+            
+            if (localStream && isCameraOn) {
+                const videoElement = document.createElement('video');
+                videoElement.srcObject = localStream;
+                videoElement.autoplay = true;
+                videoElement.muted = true;
+                videoElement.playsInline = true;
+                
+                videoContainer.appendChild(videoElement);
+                localVideoElement = videoElement;
+            } else {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'video-placeholder';
+                placeholder.innerHTML = `<i class="fas fa-user" style="font-size: 48px;"></i>`;
+                videoContainer.appendChild(placeholder);
+            }
+            
+            const nameElement = document.createElement('div');
+            nameElement.className = 'participant-name';
+            nameElement.textContent = `${currentUser.displayName || currentUser.email.split('@')[0]} (Вы)`;
+            
+            videoContainer.appendChild(nameElement);
+            participantsGrid.appendChild(videoContainer);
+        }
+
+        // Add participant to grid
+        function addParticipantToGrid(userId, userName, isLocal = false) {
+            if (isLocal) return; // Local participant is already added
+            
+            const participantsGrid = document.getElementById('participants-grid');
+            const existingParticipant = document.getElementById(`participant-${userId}`);
+            
+            if (existingParticipant) return;
+            
+            const videoContainer = document.createElement('div');
+            videoContainer.className = 'participant-video';
+            videoContainer.id = `participant-${userId}`;
+            
+            const placeholder = document.createElement('div');
+            placeholder.className = 'video-placeholder';
+            placeholder.innerHTML = `<i class="fas fa-user" style="font-size: 48px;"></i>`;
+            videoContainer.appendChild(placeholder);
+            
+            const nameElement = document.createElement('div');
+            nameElement.className = 'participant-name';
+            nameElement.textContent = userName;
+            
+            videoContainer.appendChild(nameElement);
+            participantsGrid.appendChild(videoContainer);
+        }
+
+        // Remove participant from grid
+        function removeParticipantFromGrid(userId) {
+            const participantElement = document.getElementById(`participant-${userId}`);
+            if (participantElement) {
+                participantElement.remove();
+            }
+        }
+
         // Set up realtime listeners for meeting
         function setupMeetingListeners() {
             // Listen for participant changes
-            meetingRef = database.ref('meetings/' + currentMeeting.id);
-            meetingRef.on('value', (snapshot) => {
-                const meeting = snapshot.val();
-                if (meeting) {
-                    updateParticipantsList(meeting.participants);
+            participantsRef = database.ref('meetings/' + currentMeeting.id + '/participants');
+            participantsRef.on('value', (snapshot) => {
+                const participants = snapshot.val();
+                if (participants) {
+                    updateParticipantsList(participants);
+                    updateParticipantsGrid(participants);
                 }
             });
             
@@ -1472,22 +1603,36 @@
             
             for (const userId in participants) {
                 const participant = participants[userId];
-                const participantItem = document.createElement('div');
-                participantItem.className = 'participant-item';
-                
-                const isCreator = userId === currentMeeting.creator;
-                const isYou = userId === currentUser.uid;
-                
-                participantItem.innerHTML = `
-                    <div class="participant-avatar">${participant.name.charAt(0)}</div>
-                    <div>${participant.name} ${isYou ? '(Вы)' : ''} ${isCreator ? '(организатор)' : ''}</div>
-                `;
-                
-                participantsList.appendChild(participantItem);
-                count++;
+                if (participant.isOnline) {
+                    const participantItem = document.createElement('div');
+                    participantItem.className = 'participant-item';
+                    
+                    const isCreator = userId === currentMeeting.creator;
+                    const isYou = userId === currentUser.uid;
+                    
+                    participantItem.innerHTML = `
+                        <div class="participant-avatar">${participant.name.charAt(0)}</div>
+                        <div>${participant.name} ${isYou ? '(Вы)' : ''} ${isCreator ? '(организатор)' : ''}</div>
+                    `;
+                    
+                    participantsList.appendChild(participantItem);
+                    count++;
+                }
             }
             
             participantsCount.textContent = count;
+        }
+
+        // Update participants grid
+        function updateParticipantsGrid(participants) {
+            for (const userId in participants) {
+                const participant = participants[userId];
+                if (participant.isOnline && userId !== currentUser.uid) {
+                    addParticipantToGrid(userId, participant.name);
+                } else if (!participant.isOnline) {
+                    removeParticipantFromGrid(userId);
+                }
+            }
         }
 
         // Add chat message to UI
@@ -1574,10 +1719,19 @@
         // Leave meeting
         function leaveMeeting() {
             if (confirm('Вы уверены, что хотите покинуть встречу?')) {
+                // Stop all media tracks
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                
+                if (screenStream) {
+                    screenStream.getTracks().forEach(track => track.stop());
+                }
+                
                 // Remove user from participants
-                if (meetingRef) {
-                    database.ref('meetings/' + currentMeeting.id + '/participants/' + currentUser.uid).remove();
-                    meetingRef.off();
+                if (participantsRef) {
+                    database.ref('meetings/' + currentMeeting.id + '/participants/' + currentUser.uid + '/isOnline').set(false);
+                    participantsRef.off();
                 }
                 
                 if (chatRef) {
@@ -1594,6 +1748,12 @@
             isMicOn = !isMicOn;
             const micIcon = document.querySelector('#mic-toggle i');
             
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = isMicOn;
+                });
+            }
+            
             if (isMicOn) {
                 micIcon.className = 'fas fa-microphone';
             } else {
@@ -1606,10 +1766,71 @@
             isCameraOn = !isCameraOn;
             const cameraIcon = document.querySelector('#camera-toggle i');
             
+            if (localStream) {
+                localStream.getVideoTracks().forEach(track => {
+                    track.enabled = isCameraOn;
+                });
+                
+                // Update video element visibility
+                const videoContainer = document.getElementById(`participant-${currentUser.uid}`);
+                if (videoContainer) {
+                    const videoElement = videoContainer.querySelector('video');
+                    const placeholder = videoContainer.querySelector('.video-placeholder');
+                    
+                    if (isCameraOn && videoElement) {
+                        videoElement.style.display = 'block';
+                        if (placeholder) placeholder.style.display = 'none';
+                    } else {
+                        if (videoElement) videoElement.style.display = 'none';
+                        if (placeholder) placeholder.style.display = 'flex';
+                    }
+                }
+            }
+            
             if (isCameraOn) {
                 cameraIcon.className = 'fas fa-video';
             } else {
                 cameraIcon.className = 'fas fa-video-slash';
+            }
+        }
+
+        // Toggle screen sharing
+        async function toggleScreenShare() {
+            try {
+                if (!isScreenSharing) {
+                    // Start screen sharing
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: true,
+                        audio: true
+                    });
+                    
+                    // Replace local video stream with screen share
+                    if (localVideoElement) {
+                        localVideoElement.srcObject = screenStream;
+                    }
+                    
+                    isScreenSharing = true;
+                    
+                    // Handle when user stops screen sharing
+                    screenStream.getTracks().forEach(track => {
+                        track.onended = () => {
+                            toggleScreenShare();
+                        };
+                    });
+                } else {
+                    // Stop screen sharing
+                    screenStream.getTracks().forEach(track => track.stop());
+                    
+                    // Restore local video stream
+                    if (localVideoElement && localStream) {
+                        localVideoElement.srcObject = localStream;
+                    }
+                    
+                    isScreenSharing = false;
+                }
+            } catch (error) {
+                console.error('Error sharing screen:', error);
+                alert('Не удалось начать демонстрацию экрана');
             }
         }
 
