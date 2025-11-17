@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meetly - Видеоконференции</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
+    <style>
+        :root {
+            --primary-color: #2F6BFF;
+            --primary-gradient: linear-gradient(135deg, #2F6BFF, #8A2BE2);
+            --background-color: #F5F7FA;
+            --surface-color: #FFFFFF;
+            --text-primary: #1A202C;
+            --text-secondary: #4A5568;
+            --border-radius: 16px;
+            --shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            --shadow-hover: 0 15px 35px rgba(0, 0, 0, 0.1);
+            --glass-bg: rgba(255, 255, 255, 0.7);
+            --glass-border: 1px solid rgba(255, 255, 255, 0.3);
+            --error-color: #FF4757;
+            --success-color: #2ED573;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            padding: 20px 0;
+            position: fixed;
+            width: 100%;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-bottom: var(--glass-border);
+            z-index: 1000;
+        }
+
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            font-weight: 700;
+            font-size: 24px;
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .logo i {
+            margin-right: 10px;
+            font-size: 28px;
+        }
+
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+
+        nav ul li {
+            margin-left: 30px;
+        }
+
+        nav ul li a {
+            text-decoration: none;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .auth-buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: var(--border-radius);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: none;
+            font-size: 16px;
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        /* Pages */
+        .page {
+            display: none;
+            min-height: 100vh;
+            padding-top: 80px;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 100px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            min-height: calc(100vh - 80px);
+            flex-direction: column;
+        }
+
+        .hero-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: 52px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .btn-large {
+            padding: 15px 30px;
+            font-size: 18px;
+        }
+
+        /* Auth Forms */
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: calc(100vh - 80px);
+            padding: 40px 0;
+        }
+
+        .auth-form {
+            background: var(--surface-color);
+            border-radius: var(--border-radius);
+            padding: 40px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 450px;
+        }
+
+        .auth-form h2 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #E2E8F0;
+            border-radius: var(--border-radius);
+            font-size: 16px;
+        }
+
+        .form-footer {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .form-footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .error-message {
+            color: var(--error-color);
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        /* Dashboard */
+        .dashboard {
+            padding: 40px 0;
+        }
+
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .meetings-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .meeting-card {
+            background: var(--surface-color);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s;
+        }
+
+        .meeting-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .meeting-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        /* Meeting Page */
+        .meeting-container {
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+
+        .video-container {
+            flex: 3;
+            background: #1A202C;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .meeting-header {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .meeting-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .meeting-id-display {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .copy-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .participants-grid {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 10px;
+            padding: 20px;
+        }
+
+        .participant-video {
+            background: #2D3748;
+            border-radius: 12px;
+            position: relative;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .participant-name {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .meeting-controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .control-btn-meeting {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #4A5568;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+        }
+
+        .control-btn-meeting.end-call {
+            background: var(--error-color);
+        }
+
+        .sidebar {
+            flex: 1;
+            background: var(--surface-color);
+            display: flex;
+            flex-direction: column;
+            max-width: 350px;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #E2E8F0;
+        }
+
+        .meeting-info-panel {
+            padding: 20px;
+            border-bottom: 1px solid #E2E8F0;
+        }
+
+        .info-item {
+            margin-bottom: 15px;
+        }
+
+        .info-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-weight: 500;
+        }
+
+        .participants-list {
+            padding: 20px;
+            border-bottom: 1px solid #E2E8F0;
+        }
+
+        .participants-list h4 {
+            margin-bottom: 15px;
+        }
+
+        .participant-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .participant-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: #F7FAFC;
+            border-radius: 12px;
+            max-width: 80%;
+        }
+
+        .message.own {
+            background: var(--primary-color);
+            color: white;
+            margin-left: auto;
+        }
+
+        .message-sender {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid #E2E8F0;
+            border-radius: var(--border-radius);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--surface-color);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: var(--shadow-hover);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+
+        .modal-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .step {
+            text-align: center;
+            flex: 1;
+            position: relative;
+        }
+
+        .step:not(:last-child):after {
+            content: '';
+            position: absolute;
+            top: 15px;
+            right: -50%;
+            width: 100%;
+            height: 2px;
+            background: #E2E8F0;
+            z-index: 1;
+        }
+
+        .step-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #E2E8F0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 5px;
+            font-weight: 600;
+            z-index: 2;
+            position: relative;
+        }
+
+        .step.active .step-number {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .step-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .step.active .step-label {
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .step-content {
+            display: none;
+        }
+
+        .step-content.active {
+            display: block;
+        }
+
+        .device-options {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .device-option {
+            flex: 1;
+            text-align: center;
+            padding: 15px;
+            border: 2px solid #E2E8F0;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .device-option.selected {
+            border-color: var(--primary-color);
+            background: rgba(47, 107, 255, 0.05);
+        }
+
+        .device-option i {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: var(--text-secondary);
+        }
+
+        .device-option.selected i {
+            color: var(--primary-color);
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 80px 0;
+            background: var(--surface-color);
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-title h2 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .section-title p {
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        .feature-card {
+            background: var(--surface-color);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .feature-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: var(--primary-gradient);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+        }
+
+        .feature-card h3 {
+            font-size: 22px;
+            margin-bottom: 15px;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+        }
+
+        /* Loading */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 36px;
+            }
+            .hero-buttons {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .btn {
+                width: 100%;
+            }
+            .meeting-container {
+                flex-direction: column;
+            }
+            .sidebar {
+                max-width: 100%;
+            }
+            nav ul {
+                display: none;
+            }
+            .device-options {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container header-container">
+            <a href="#" class="logo" onclick="showPage('home')">
+                <i class="fas fa-video"></i>
+                <span>Meetly</span>
+            </a>
+            <nav>
+                <ul>
+                    <li><a href="#" onclick="showPage('home')">Главная</a></li>
+                    <li><a href="#" onclick="showPage('features')">Функции</a></li>
+                </ul>
+            </nav>
+            <div class="auth-buttons" id="auth-buttons">
+                <button class="btn btn-secondary" onclick="showPage('login')">Вход</button>
+                <button class="btn btn-primary" onclick="showPage('register')">Регистрация</button>
+            </div>
+            <div class="user-menu" id="user-menu" style="display: none;">
+                <div class="user-avatar" id="user-avatar">U</div>
+                <button class="btn btn-secondary" onclick="logout()">Выйти</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Home Page -->
+    <div id="home" class="page active">
+        <section class="hero">
+            <div class="hero-content">
+                <h1>Видеоконференции стали проще с Meetly</h1>
+                <p>Современная платформа для общения с коллегами, клиентами и друзьями. HD-видео, демонстрация экрана и многое другое в одном месте.</p>
+                <div class="hero-buttons">
+                    <button class="btn btn-primary btn-large" onclick="showCreateConferenceModal()">Создать конференцию</button>
+                    <button class="btn btn-secondary" onclick="showJoinMeetingModal()">Присоединиться к встрече</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section class="features">
+            <div class="container">
+                <div class="section-title">
+                    <h2>Мощные функции для эффективного общения</h2>
+                    <p>Все необходимое для продуктивных встреч и совместной работы в одном месте</p>
+                </div>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-video"></i>
+                        </div>
+                        <h3>HD-видео и аудио</h3>
+                        <p>Кристально чистое качество видео и звука для комфортного общения без задержек</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-desktop"></i>
+                        </div>
+                        <h3>Демонстрация экрана</h3>
+                        <p>Показывайте презентации, документы и рабочий процесс всем участникам встречи</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <h3>Текстовый чат</h3>
+                        <p>Обменивайтесь сообщениями, файлами и ссылками во время видеовстречи</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h3>Безопасность</h3>
+                        <p>Шифрование данных и защита конфиденциальности ваших переговоров</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Login Page -->
+    <div id="login" class="page">
+        <div class="auth-container">
+            <div class="auth-form">
+                <h2>Вход в аккаунт</h2>
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="login-email">Email</label>
+                        <input type="email" id="login-email" class="form-control" placeholder="Ваш email" required>
+                        <div class="error-message" id="login-email-error"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Пароль</label>
+                        <input type="password" id="login-password" class="form-control" placeholder="Ваш пароль" required>
+                        <div class="error-message" id="login-password-error"></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Войти</button>
+                </form>
+                <div class="form-footer">
+                    <p>Нет аккаунта? <a href="#" onclick="showPage('register')">Зарегистрироваться</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Page -->
+    <div id="register" class="page">
+        <div class="auth-container">
+            <div class="auth-form">
+                <h2>Регистрация</h2>
+                <form id="register-form">
+                    <div class="form-group">
+                        <label for="register-name">Имя</label>
+                        <input type="text" id="register-name" class="form-control" placeholder="Ваше имя" required>
+                        <div class="error-message" id="register-name-error"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-email">Email</label>
+                        <input type="email" id="register-email" class="form-control" placeholder="Ваш email" required>
+                        <div class="error-message" id="register-email-error"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password">Пароль</label>
+                        <input type="password" id="register-password" class="form-control" placeholder="Ваш пароль" required>
+                        <div class="error-message" id="register-password-error"></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Зарегистрироваться</button>
+                </form>
+                <div class="form-footer">
+                    <p>Уже есть аккаунт? <a href="#" onclick="showPage('login')">Войти</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Page -->
+    <div id="dashboard" class="page">
+        <div class="dashboard container">
+            <div class="dashboard-header">
+                <h1>Мои встречи</h1>
+                <button class="btn btn-primary" onclick="showCreateConferenceModal()">Создать встречу</button>
+            </div>
+            <div class="loading" id="meetings-loading">Загрузка ваших встреч...</div>
+            <div class="meetings-list" id="meetings-list">
+                <!-- Meetings will be loaded here from Firebase -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Meeting Page -->
+    <div id="meeting" class="page">
+        <div class="meeting-container">
+            <div class="video-container">
+                <div class="meeting-header">
+                    <div class="meeting-title" id="meeting-title-display">Загрузка...</div>
+                    <div class="meeting-id-display">
+                        <span>ID: <strong id="meeting-id-display">XXXXXX</strong></span>
+                        <button class="copy-btn" onclick="copyMeetingId()">
+                            <i class="fas fa-copy"></i> Копировать
+                        </button>
+                    </div>
+                </div>
+                <div class="participants-grid" id="participants-grid">
+                    <div class="participant-video">
+                        <i class="fas fa-user" style="font-size: 48px;"></i>
+                        <div class="participant-name">Вы</div>
+                    </div>
+                </div>
+                <div class="meeting-controls">
+                    <div class="control-btn-meeting" id="mic-toggle">
+                        <i class="fas fa-microphone"></i>
+                    </div>
+                    <div class="control-btn-meeting" id="camera-toggle">
+                        <i class="fas fa-video"></i>
+                    </div>
+                    <div class="control-btn-meeting end-call" onclick="leaveMeeting()">
+                        <i class="fas fa-phone-slash"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h3>Текущая встреча</h3>
+                </div>
+                <div class="meeting-info-panel">
+                    <div class="info-item">
+                        <div class="info-label">Название встречи</div>
+                        <div class="info-value" id="sidebar-meeting-title">Загрузка...</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">ID встречи</div>
+                        <div class="info-value" id="sidebar-meeting-id">XXXXXX</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Статус</div>
+                        <div class="info-value">Активна</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Участники</div>
+                        <div class="info-value" id="participants-count">1</div>
+                    </div>
+                </div>
+                <div class="participants-list">
+                    <h4>Участники</h4>
+                    <div id="participants-list">
+                        <div class="participant-item">
+                            <div class="participant-avatar">В</div>
+                            <div>Вы (организатор)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-container">
+                    <div class="chat-messages" id="chat-messages">
+                        <!-- Chat messages will be loaded from Firebase -->
+                    </div>
+                    <div class="chat-input">
+                        <input type="text" id="chat-input" placeholder="Введите сообщение...">
+                        <button class="btn btn-primary" onclick="sendMessage()">Отправить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Meeting Modal -->
+    <div class="modal" id="join-meeting-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Присоединиться к встрече</h3>
+                <button class="close-modal" onclick="closeModal('join-meeting-modal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label for="meeting-id">ID встречи</label>
+                <input type="text" id="meeting-id" class="form-control" placeholder="Введите ID встречи">
+            </div>
+            <button class="btn btn-primary" style="width: 100%; margin-top: 20px;" onclick="joinMeeting()">Присоединиться</button>
+        </div>
+    </div>
+
+    <!-- Create Conference Modal -->
+    <div class="modal" id="create-conference-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Создать конференцию</h3>
+                <button class="close-modal" onclick="closeModal('create-conference-modal')">&times;</button>
+            </div>
+            
+            <div class="modal-steps">
+                <div class="step active" id="step-1">
+                    <div class="step-number">1</div>
+                    <div class="step-label">Детали</div>
+                </div>
+                <div class="step" id="step-2">
+                    <div class="step-number">2</div>
+                    <div class="step-label">Профиль</div>
+                </div>
+                <div class="step" id="step-3">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Устройства</div>
+                </div>
+            </div>
+            
+            <!-- Step 1: Conference Details -->
+            <div class="step-content active" id="step-content-1">
+                <div class="form-group">
+                    <label for="conference-name">Название конференции</label>
+                    <input type="text" id="conference-name" class="form-control" placeholder="Введите название конференции" required>
+                </div>
+                <div class="form-group">
+                    <label for="conference-time">Дата и время начала (необязательно)</label>
+                    <input type="datetime-local" id="conference-time" class="form-control">
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeModal('create-conference-modal')">Отмена</button>
+                    <button class="btn btn-primary" onclick="goToStep(2)">Продолжить</button>
+                </div>
+            </div>
+            
+            <!-- Step 2: User Profile -->
+            <div class="step-content" id="step-content-2">
+                <div class="form-group">
+                    <label for="user-name">Ваше имя для этой конференции</label>
+                    <input type="text" id="user-name" class="form-control" placeholder="Введите ваше имя" required>
+                </div>
+                <div class="form-group">
+                    <p>Или используйте имя из профиля:</p>
+                    <button class="btn btn-secondary" id="use-profile-name" style="width: 100%;">Использовать имя из профиля</button>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="goToStep(1)">Назад</button>
+                    <button class="btn btn-primary" onclick="goToStep(3)">Продолжить</button>
+                </div>
+            </div>
+            
+            <!-- Step 3: Device Settings -->
+            <div class="step-content" id="step-content-3">
+                <p>Настройте ваши устройства перед началом конференции:</p>
+                
+                <div class="device-options">
+                    <div class="device-option selected" id="camera-option" onclick="toggleDeviceOption('camera')">
+                        <i class="fas fa-video"></i>
+                        <div>Камера включена</div>
+                    </div>
+                    <div class="device-option selected" id="mic-option" onclick="toggleDeviceOption('mic')">
+                        <i class="fas fa-microphone"></i>
+                        <div>Микрофон включен</div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="goToStep(2)">Назад</button>
+                    <button class="btn btn-primary" onclick="createConference()">Создать конференцию</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase configuration - ЗАМЕНИТЕ НА ВАШИ ДАННЫЕ
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA2X_spewEa5-N1h-aUoswCfYqlQzUaEk",
+            authDomain: "meetly-2add6.firebaseapp.com",
+            databaseURL: "https://meetly-2add6-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "meetly-2add6",
+            storageBucket: "meetly-2add6.firebasestorage.app",
+            messagingSenderId: "692120097598",
+            appId: "1:692120097598:web:287979d1e1c1e97bee526f"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        // State management
+        let currentUser = null;
+        let currentMeeting = null;
+        let currentStep = 1;
+        let deviceSettings = {
+            camera: true,
+            microphone: true
+        };
+        let isMicOn = true;
+        let isCameraOn = true;
+        let chatRef = null;
+        let meetingRef = null;
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check auth state
+            auth.onAuthStateChanged((user) => {
+                if (user) {
+                    currentUser = user;
+                    updateUIForUser();
+                    loadUserMeetings();
+                } else {
+                    currentUser = null;
+                    document.getElementById('auth-buttons').style.display = 'flex';
+                    document.getElementById('user-menu').style.display = 'none';
+                }
+            });
+            
+            // Form submissions
+            document.getElementById('login-form').addEventListener('submit', handleLogin);
+            document.getElementById('register-form').addEventListener('submit', handleRegister);
+            
+            // Meeting controls
+            document.getElementById('mic-toggle').addEventListener('click', toggleMic);
+            document.getElementById('camera-toggle').addEventListener('click', toggleCamera);
+            document.getElementById('chat-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') sendMessage();
+            });
+            
+            // Use profile name button
+            document.getElementById('use-profile-name').addEventListener('click', function(e) {
+                e.preventDefault();
+                if (currentUser) {
+                    document.getElementById('user-name').value = currentUser.displayName || currentUser.email.split('@')[0];
+                } else {
+                    alert('Вы не вошли в систему. Сначала зарегистрируйтесь или войдите.');
+                }
+            });
+        });
+
+        // Update UI when user is logged in
+        function updateUIForUser() {
+            document.getElementById('auth-buttons').style.display = 'none';
+            document.getElementById('user-menu').style.display = 'flex';
+            document.getElementById('user-avatar').textContent = (currentUser.displayName || currentUser.email).charAt(0).toUpperCase();
+        }
+
+        // Show specific page
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            document.getElementById(pageId).classList.add('active');
+            
+            if (pageId === 'dashboard' && currentUser) {
+                loadUserMeetings();
+            }
+        }
+
+        // Handle login
+        function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            hideAllErrors();
+            
+            if (!email || !password) {
+                showError('login-email-error', 'Заполните все поля');
+                return;
+            }
+            
+            auth.signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    // Signed in
+                    currentUser = userCredential.user;
+                    showPage('dashboard');
+                })
+                .catch((error) => {
+                    const errorCode = error.code;
+                    const errorMessage = error.message;
+                    
+                    if (errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
+                        showError('login-email-error', 'Неверный email или пароль');
+                    } else {
+                        showError('login-email-error', errorMessage);
+                    }
+                });
+        }
+
+        // Handle registration
+        function handleRegister(e) {
+            e.preventDefault();
+            const name = document.getElementById('register-name').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            
+            hideAllErrors();
+            
+            if (!name || !email || !password) {
+                showError('register-name-error', 'Заполните все поля');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showError('register-password-error', 'Пароль должен содержать минимум 6 символов');
+                return;
+            }
+            
+            auth.createUserWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    // Signed up
+                    currentUser = userCredential.user;
+                    
+                    // Update profile
+                    return currentUser.updateProfile({
+                        displayName: name
+                    });
+                })
+                .then(() => {
+                    // Create user in database
+                    return database.ref('users/' + currentUser.uid).set({
+                        name: name,
+                        email: email,
+                        createdAt: firebase.database.ServerValue.TIMESTAMP
+                    });
+                })
+                .then(() => {
+                    showPage('dashboard');
+                })
+                .catch((error) => {
+                    const errorCode = error.code;
+                    const errorMessage = error.message;
+                    
+                    if (errorCode === 'auth/email-already-in-use') {
+                        showError('register-email-error', 'Пользователь с таким email уже существует');
+                    } else {
+                        showError('register-email-error', errorMessage);
+                    }
+                });
+        }
+
+        // Logout
+        function logout() {
+            if (meetingRef && currentMeeting) {
+                leaveMeeting();
+            }
+            
+            auth.signOut().then(() => {
+                currentUser = null;
+                document.getElementById('auth-buttons').style.display = 'flex';
+                document.getElementById('user-menu').style.display = 'none';
+                showPage('home');
+            });
+        }
+
+        // Show create conference modal
+        function showCreateConferenceModal() {
+            if (!currentUser) {
+                showPage('login');
+                return;
+            }
+            
+            currentStep = 1;
+            updateSteps();
+            document.getElementById('create-conference-modal').classList.add('active');
+            
+            // Set current date and time as default
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            
+            document.getElementById('conference-time').value = `${year}-${month}-${day}T${hours}:${minutes}`;
+            
+            // Prefill user name
+            document.getElementById('user-name').value = currentUser.displayName || currentUser.email.split('@')[0];
+        }
+
+        // Go to specific step in modal
+        function goToStep(step) {
+            // Validate current step before proceeding
+            if (step === 2 && currentStep === 1) {
+                const conferenceName = document.getElementById('conference-name').value;
+                if (!conferenceName) {
+                    alert('Пожалуйста, введите название конференции');
+                    return;
+                }
+            } else if (step === 3 && currentStep === 2) {
+                const userName = document.getElementById('user-name').value;
+                if (!userName) {
+                    alert('Пожалуйста, введите ваше имя');
+                    return;
+                }
+            }
+            
+            currentStep = step;
+            updateSteps();
+        }
+
+        // Update step indicators and content
+        function updateSteps() {
+            // Update step indicators
+            document.querySelectorAll('.step').forEach(step => {
+                step.classList.remove('active');
+            });
+            document.getElementById(`step-${currentStep}`).classList.add('active');
+            
+            // Update step content
+            document.querySelectorAll('.step-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`step-content-${currentStep}`).classList.add('active');
+        }
+
+        // Toggle device option
+        function toggleDeviceOption(device) {
+            const option = document.getElementById(`${device}-option`);
+            deviceSettings[device] = !deviceSettings[device];
+            
+            if (deviceSettings[device]) {
+                option.classList.add('selected');
+                option.querySelector('i').className = device === 'camera' ? 'fas fa-video' : 'fas fa-microphone';
+                option.querySelector('div').textContent = device === 'camera' ? 'Камера включена' : 'Микрофон включен';
+            } else {
+                option.classList.remove('selected');
+                option.querySelector('i').className = device === 'camera' ? 'fas fa-video-slash' : 'fas fa-microphone-slash';
+                option.querySelector('div').textContent = device === 'camera' ? 'Камера выключена' : 'Микрофон выключен';
+            }
+        }
+
+        // Create conference
+        function createConference() {
+            const conferenceName = document.getElementById('conference-name').value;
+            const conferenceTime = document.getElementById('conference-time').value;
+            const userName = document.getElementById('user-name').value;
+            
+            if (!conferenceName || !userName) {
+                alert('Пожалуйста, заполните все обязательные поля');
+                return;
+            }
+            
+            const meetingId = generateMeetingId();
+            const meetingData = {
+                id: meetingId,
+                title: conferenceName,
+                creator: currentUser.uid,
+                creatorName: userName,
+                participants: {
+                    [currentUser.uid]: {
+                        name: userName,
+                        joinedAt: firebase.database.ServerValue.TIMESTAMP
+                    }
+                },
+                createdAt: firebase.database.ServerValue.TIMESTAMP,
+                scheduledTime: conferenceTime || new Date().toISOString(),
+                userSettings: deviceSettings,
+                isActive: true
+            };
+            
+            // Save meeting to Firebase
+            database.ref('meetings/' + meetingId).set(meetingData)
+                .then(() => {
+                    // Add meeting to user's meetings
+                    return database.ref('userMeetings/' + currentUser.uid + '/' + meetingId).set({
+                        title: conferenceName,
+                        createdAt: firebase.database.ServerValue.TIMESTAMP
+                    });
+                })
+                .then(() => {
+                    closeModal('create-conference-modal');
+                    joinMeetingById(meetingId, conferenceName);
+                })
+                .catch((error) => {
+                    alert('Ошибка при создании встречи: ' + error.message);
+                });
+        }
+
+        // Show join meeting modal
+        function showJoinMeetingModal() {
+            document.getElementById('join-meeting-modal').classList.add('active');
+        }
+
+        // Join meeting by ID
+        function joinMeeting() {
+            const meetingId = document.getElementById('meeting-id').value;
+            if (!meetingId) {
+                alert('Введите ID встречи');
+                return;
+            }
+            
+            if (!currentUser) {
+                showPage('login');
+                return;
+            }
+            
+            joinMeetingById(meetingId);
+        }
+
+        // Join meeting by ID
+        function joinMeetingById(meetingId, meetingName = null) {
+            // Check if meeting exists
+            database.ref('meetings/' + meetingId).once('value')
+                .then((snapshot) => {
+                    if (!snapshot.exists()) {
+                        alert('Встреча не найдена');
+                        return;
+                    }
+                    
+                    const meeting = snapshot.val();
+                    currentMeeting = meeting;
+                    currentMeeting.id = meetingId;
+                    
+                    if (meetingName) {
+                        currentMeeting.title = meetingName;
+                    }
+                    
+                    // Add user to participants if not already there
+                    if (!currentMeeting.participants[currentUser.uid]) {
+                        const userName = currentUser.displayName || currentUser.email.split('@')[0];
+                        return database.ref('meetings/' + meetingId + '/participants/' + currentUser.uid).set({
+                            name: userName,
+                            joinedAt: firebase.database.ServerValue.TIMESTAMP
+                        });
+                    }
+                })
+                .then(() => {
+                    showMeetingPage();
+                })
+                .catch((error) => {
+                    alert('Ошибка при присоединении к встрече: ' + error.message);
+                });
+        }
+
+        // Show meeting page
+        function showMeetingPage() {
+            // Update meeting info
+            document.getElementById('meeting-title-display').textContent = currentMeeting.title;
+            document.getElementById('sidebar-meeting-title').textContent = currentMeeting.title;
+            document.getElementById('meeting-id-display').textContent = currentMeeting.id;
+            document.getElementById('sidebar-meeting-id').textContent = currentMeeting.id;
+            
+            // Apply device settings if available
+            if (currentMeeting.userSettings) {
+                isMicOn = currentMeeting.userSettings.microphone;
+                isCameraOn = currentMeeting.userSettings.camera;
+                
+                // Update control buttons
+                const micIcon = document.querySelector('#mic-toggle i');
+                const cameraIcon = document.querySelector('#camera-toggle i');
+                
+                micIcon.className = isMicOn ? 'fas fa-microphone' : 'fas fa-microphone-slash';
+                cameraIcon.className = isCameraOn ? 'fas fa-video' : 'fas fa-video-slash';
+            }
+            
+            // Set up realtime listeners
+            setupMeetingListeners();
+            
+            showPage('meeting');
+        }
+
+        // Set up realtime listeners for meeting
+        function setupMeetingListeners() {
+            // Listen for participant changes
+            meetingRef = database.ref('meetings/' + currentMeeting.id);
+            meetingRef.on('value', (snapshot) => {
+                const meeting = snapshot.val();
+                if (meeting) {
+                    updateParticipantsList(meeting.participants);
+                }
+            });
+            
+            // Listen for chat messages
+            chatRef = database.ref('meetings/' + currentMeeting.id + '/messages');
+            chatRef.on('child_added', (snapshot) => {
+                const message = snapshot.val();
+                addChatMessageToUI(message);
+            });
+        }
+
+        // Update participants list
+        function updateParticipantsList(participants) {
+            const participantsList = document.getElementById('participants-list');
+            const participantsCount = document.getElementById('participants-count');
+            
+            participantsList.innerHTML = '';
+            let count = 0;
+            
+            for (const userId in participants) {
+                const participant = participants[userId];
+                const participantItem = document.createElement('div');
+                participantItem.className = 'participant-item';
+                
+                const isCreator = userId === currentMeeting.creator;
+                const isYou = userId === currentUser.uid;
+                
+                participantItem.innerHTML = `
+                    <div class="participant-avatar">${participant.name.charAt(0)}</div>
+                    <div>${participant.name} ${isYou ? '(Вы)' : ''} ${isCreator ? '(организатор)' : ''}</div>
+                `;
+                
+                participantsList.appendChild(participantItem);
+                count++;
+            }
+            
+            participantsCount.textContent = count;
+        }
+
+        // Add chat message to UI
+        function addChatMessageToUI(message) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageElement = document.createElement('div');
+            
+            const isOwn = message.userId === currentUser.uid;
+            messageElement.className = `message ${isOwn ? 'own' : ''}`;
+            
+            messageElement.innerHTML = `
+                <div class="message-sender">${isOwn ? 'Вы' : message.userName}</div>
+                <div>${message.text}</div>
+            `;
+            
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Load user meetings
+        function loadUserMeetings() {
+            const meetingsList = document.getElementById('meetings-list');
+            const loadingElement = document.getElementById('meetings-loading');
+            
+            loadingElement.classList.add('active');
+            meetingsList.innerHTML = '';
+            
+            database.ref('userMeetings/' + currentUser.uid).once('value')
+                .then((snapshot) => {
+                    loadingElement.classList.remove('active');
+                    
+                    if (!snapshot.exists()) {
+                        meetingsList.innerHTML = '<p>У вас пока нет встреч. Создайте первую!</p>';
+                        return;
+                    }
+                    
+                    const meetings = snapshot.val();
+                    let hasMeetings = false;
+                    
+                    for (const meetingId in meetings) {
+                        const meeting = meetings[meetingId];
+                        const meetingCard = document.createElement('div');
+                        meetingCard.className = 'meeting-card';
+                        
+                        meetingCard.innerHTML = `
+                            <h3>${meeting.title}</h3>
+                            <p>Создана: ${new Date(meeting.createdAt).toLocaleDateString()}</p>
+                            <div class="meeting-actions">
+                                <button class="btn btn-primary" onclick="joinMeetingById('${meetingId}')">Присоединиться</button>
+                                <button class="btn btn-secondary" onclick="copyMeetingIdToClipboard('${meetingId}')">Копировать ID</button>
+                            </div>
+                        `;
+                        
+                        meetingsList.appendChild(meetingCard);
+                        hasMeetings = true;
+                    }
+                    
+                    if (!hasMeetings) {
+                        meetingsList.innerHTML = '<p>У вас пока нет встреч. Создайте первую!</p>';
+                    }
+                })
+                .catch((error) => {
+                    loadingElement.classList.remove('active');
+                    meetingsList.innerHTML = '<p>Ошибка загрузки встреч</p>';
+                });
+        }
+
+        // Copy meeting ID to clipboard
+        function copyMeetingIdToClipboard(meetingId) {
+            navigator.clipboard.writeText(meetingId)
+                .then(() => {
+                    alert('ID встречи скопирован в буфер обмена');
+                })
+                .catch(err => {
+                    console.error('Ошибка копирования: ', err);
+                });
+        }
+
+        // Copy meeting ID
+        function copyMeetingId() {
+            copyMeetingIdToClipboard(currentMeeting.id);
+        }
+
+        // Leave meeting
+        function leaveMeeting() {
+            if (confirm('Вы уверены, что хотите покинуть встречу?')) {
+                // Remove user from participants
+                if (meetingRef) {
+                    database.ref('meetings/' + currentMeeting.id + '/participants/' + currentUser.uid).remove();
+                    meetingRef.off();
+                }
+                
+                if (chatRef) {
+                    chatRef.off();
+                }
+                
+                currentMeeting = null;
+                showPage('dashboard');
+            }
+        }
+
+        // Toggle microphone
+        function toggleMic() {
+            isMicOn = !isMicOn;
+            const micIcon = document.querySelector('#mic-toggle i');
+            
+            if (isMicOn) {
+                micIcon.className = 'fas fa-microphone';
+            } else {
+                micIcon.className = 'fas fa-microphone-slash';
+            }
+        }
+
+        // Toggle camera
+        function toggleCamera() {
+            isCameraOn = !isCameraOn;
+            const cameraIcon = document.querySelector('#camera-toggle i');
+            
+            if (isCameraOn) {
+                cameraIcon.className = 'fas fa-video';
+            } else {
+                cameraIcon.className = 'fas fa-video-slash';
+            }
+        }
+
+        // Send chat message
+        function sendMessage() {
+            const chatInput = document.getElementById('chat-input');
+            const message = chatInput.value.trim();
+            
+            if (message && currentMeeting) {
+                const messageData = {
+                    text: message,
+                    userId: currentUser.uid,
+                    userName: currentUser.displayName || currentUser.email.split('@')[0],
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+                
+                database.ref('meetings/' + currentMeeting.id + '/messages').push(messageData)
+                    .then(() => {
+                        chatInput.value = '';
+                    })
+                    .catch((error) => {
+                        alert('Ошибка отправки сообщения: ' + error.message);
+                    });
+            }
+        }
+
+        // Close modal
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Generate random meeting ID
+        function generateMeetingId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+
+        // Error handling
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+
+        function hideAllErrors() {
+            document.querySelectorAll('.error-message').forEach(element => {
+                element.style.display = 'none';
+            });
+        }
+    </script>
+</body>
+</html>
