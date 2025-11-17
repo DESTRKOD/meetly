@@ -128,6 +128,7 @@
             color: white;
             font-weight: 600;
             font-size: 14px;
+            flex-shrink: 0;
         }
 
         .btn {
@@ -332,7 +333,7 @@
             background: #1A202C;
             display: flex;
             flex-direction: column;
-            min-height: 0; /* Important for flex children */
+            min-height: 0;
         }
 
         .meeting-header {
@@ -404,6 +405,18 @@
             border-radius: 20px;
             font-size: 12px;
             z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .admin-badge {
+            background: #4A5568;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 500;
         }
 
         .meeting-controls {
@@ -427,6 +440,10 @@
             cursor: pointer;
             border: none;
             font-size: 16px;
+        }
+
+        .control-btn-meeting.active {
+            background: var(--primary-color);
         }
 
         .control-btn-meeting.end-call {
@@ -520,6 +537,18 @@
             color: white;
             font-size: 12px;
             font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .participant-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .participant-role {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 2px;
         }
 
         .chat-container {
@@ -555,6 +584,16 @@
             font-weight: 600;
             font-size: 12px;
             margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .message-sender-role {
+            font-size: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 1px 4px;
+            border-radius: 8px;
         }
 
         .chat-input {
@@ -842,6 +881,17 @@
             padding: 10px 0;
         }
 
+        /* Guest form */
+        .guest-form {
+            background: var(--surface-color);
+            border-radius: var(--border-radius);
+            padding: 30px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 400px;
+            margin: 0 20px;
+        }
+
         /* Media Queries */
         @media (min-width: 769px) {
             .meeting-container {
@@ -1096,6 +1146,26 @@
         </div>
     </div>
 
+    <!-- Guest Join Page -->
+    <div id="guest-join" class="page">
+        <div class="auth-container">
+            <div class="guest-form">
+                <h2>Присоединиться как гость</h2>
+                <form id="guest-form">
+                    <div class="form-group">
+                        <label for="guest-name">Ваше имя</label>
+                        <input type="text" id="guest-name" class="form-control" placeholder="Введите ваше имя" required>
+                        <div class="error-message" id="guest-name-error"></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Присоединиться</button>
+                </form>
+                <div class="form-footer">
+                    <p>Есть аккаунт? <a href="#" onclick="showPage('login')">Войти</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Dashboard Page -->
     <div id="dashboard" class="page">
         <div class="dashboard container">
@@ -1116,10 +1186,18 @@
             <div class="video-container">
                 <div class="meeting-header">
                     <div class="meeting-title" id="meeting-title-display">Загрузка...</div>
-                    <div class="meeting-id-display">
+                    <div class="meeting-id-display" id="meeting-id-display-container" style="display: none;">
                         <span>ID: <strong id="meeting-id-display">XXXXXX</strong></span>
                         <button class="copy-btn" onclick="copyMeetingId()">
                             <i class="fas fa-copy"></i> Копировать
+                        </button>
+                    </div>
+                    <div class="meeting-link-display">
+                        <button class="copy-btn" onclick="copyMeetingLink()">
+                            <i class="fas fa-link"></i> Копировать ссылку
+                        </button>
+                        <button class="copy-btn" id="end-meeting-btn" style="display: none;" onclick="endMeetingForAll()">
+                            <i class="fas fa-stop"></i> Завершить встречу
                         </button>
                     </div>
                 </div>
@@ -1127,10 +1205,10 @@
                     <!-- Video elements will be added here dynamically -->
                 </div>
                 <div class="meeting-controls">
-                    <div class="control-btn-meeting" id="mic-toggle">
+                    <div class="control-btn-meeting active" id="mic-toggle">
                         <i class="fas fa-microphone"></i>
                     </div>
-                    <div class="control-btn-meeting" id="camera-toggle">
+                    <div class="control-btn-meeting active" id="camera-toggle">
                         <i class="fas fa-video"></i>
                     </div>
                     <div class="control-btn-meeting" id="screen-share">
@@ -1201,10 +1279,11 @@
                 <button class="close-modal" onclick="closeModal('join-meeting-modal')">&times;</button>
             </div>
             <div class="form-group">
-                <label for="meeting-id">ID встречи</label>
-                <input type="text" id="meeting-id" class="form-control" placeholder="Введите ID встречи">
+                <label for="meeting-id">ID встречи или ссылка</label>
+                <input type="text" id="meeting-id" class="form-control" placeholder="Введите ID встречи или ссылку">
             </div>
-            <button class="btn btn-primary" style="width: 100%; margin-top: 20px;" onclick="joinMeeting()">Присоединиться</button>
+            <button class="btn btn-primary" style="width: 100%; margin-top: 20px;" onclick="joinMeeting()">Присоединиться как пользователь</button>
+            <button class="btn btn-secondary" style="width: 100%; margin-top: 10px;" onclick="joinAsGuest()">Присоединиться как гость</button>
         </div>
     </div>
 
@@ -1319,10 +1398,10 @@
         
         // WebRTC variables
         let localStream = null;
-        let peerConnections = {};
-        let localVideoElement = null;
         let screenStream = null;
         let isScreenSharing = false;
+        let isGuest = false;
+        let guestName = '';
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
@@ -1335,6 +1414,7 @@
                     currentUser = user;
                     updateUIForUser();
                     loadUserMeetings();
+                    isGuest = false;
                 } else {
                     currentUser = null;
                     document.getElementById('auth-buttons').style.display = 'flex';
@@ -1345,6 +1425,7 @@
             // Form submissions
             document.getElementById('login-form').addEventListener('submit', handleLogin);
             document.getElementById('register-form').addEventListener('submit', handleRegister);
+            document.getElementById('guest-form').addEventListener('submit', handleGuestJoin);
             
             // Meeting controls
             document.getElementById('mic-toggle').addEventListener('click', toggleMic);
@@ -1363,7 +1444,21 @@
                     alert('Вы не вошли в систему. Сначала зарегистрируйтесь или войдите.');
                 }
             });
+
+            // Check if there's a meeting ID in URL
+            checkUrlForMeetingId();
         });
+
+        // Check URL for meeting ID
+        function checkUrlForMeetingId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const meetingId = urlParams.get('meeting');
+            
+            if (meetingId) {
+                document.getElementById('meeting-id').value = meetingId;
+                document.getElementById('join-meeting-modal').classList.add('active');
+            }
+        }
 
         // Mobile navigation
         function toggleMobileNav() {
@@ -1494,6 +1589,53 @@
                 });
         }
 
+        // Handle guest join
+        function handleGuestJoin(e) {
+            e.preventDefault();
+            const name = document.getElementById('guest-name').value;
+            
+            if (!name) {
+                showError('guest-name-error', 'Введите ваше имя');
+                return;
+            }
+            
+            guestName = name;
+            isGuest = true;
+            
+            const meetingId = extractMeetingIdFromInput();
+            if (meetingId) {
+                joinMeetingById(meetingId);
+            } else {
+                alert('Введите корректный ID встречи или ссылку');
+            }
+        }
+
+        // Join as guest
+        function joinAsGuest() {
+            const meetingId = extractMeetingIdFromInput();
+            if (meetingId) {
+                closeModal('join-meeting-modal');
+                showPage('guest-join');
+            } else {
+                alert('Введите корректный ID встречи или ссылку');
+            }
+        }
+
+        // Extract meeting ID from input
+        function extractMeetingIdFromInput() {
+            const input = document.getElementById('meeting-id').value.trim();
+            
+            // If it's a URL, extract the meeting ID
+            if (input.includes('/')) {
+                const url = new URL(input);
+                const params = new URLSearchParams(url.search);
+                return params.get('meeting');
+            }
+            
+            // Otherwise, assume it's just the meeting ID
+            return input;
+        }
+
         // Logout
         function logout() {
             if (meetingRef && currentMeeting) {
@@ -1606,7 +1748,8 @@
                     [currentUser.uid]: {
                         name: userName,
                         joinedAt: firebase.database.ServerValue.TIMESTAMP,
-                        isOnline: true
+                        isOnline: true,
+                        isGuest: false
                     }
                 },
                 createdAt: firebase.database.ServerValue.TIMESTAMP,
@@ -1640,9 +1783,9 @@
 
         // Join meeting by ID
         function joinMeeting() {
-            const meetingId = document.getElementById('meeting-id').value;
+            const meetingId = extractMeetingIdFromInput();
             if (!meetingId) {
-                alert('Введите ID встречи');
+                alert('Введите ID встречи или ссылку');
                 return;
             }
             
@@ -1672,21 +1815,26 @@
                         currentMeeting.title = meetingName;
                     }
                     
+                    // Generate a unique ID for guest
+                    const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+                    const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
+                    
                     // Add user to participants if not already there
-                    if (!currentMeeting.participants || !currentMeeting.participants[currentUser.uid]) {
-                        const userName = currentUser.displayName || currentUser.email.split('@')[0];
-                        return database.ref('meetings/' + meetingId + '/participants/' + currentUser.uid).set({
+                    if (!currentMeeting.participants || !currentMeeting.participants[userId]) {
+                        return database.ref('meetings/' + meetingId + '/participants/' + userId).set({
                             name: userName,
                             joinedAt: firebase.database.ServerValue.TIMESTAMP,
-                            isOnline: true
+                            isOnline: true,
+                            isGuest: isGuest
                         });
                     } else {
                         // Update participant status
-                        return database.ref('meetings/' + meetingId + '/participants/' + currentUser.uid + '/isOnline').set(true);
+                        return database.ref('meetings/' + meetingId + '/participants/' + userId + '/isOnline').set(true);
                     }
                 })
                 .then(() => {
                     closeModal('join-meeting-modal');
+                    closeModal('guest-join');
                     showMeetingPage();
                 })
                 .catch((error) => {
@@ -1702,17 +1850,21 @@
             document.getElementById('meeting-id-display').textContent = currentMeeting.id;
             document.getElementById('sidebar-meeting-id').textContent = currentMeeting.id;
             
+            // Show meeting ID only for the creator
+            const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+            const isCreator = userId === currentMeeting.creator;
+            if (isCreator) {
+                document.getElementById('meeting-id-display-container').style.display = 'flex';
+                document.getElementById('end-meeting-btn').style.display = 'block';
+            }
+            
             // Apply device settings if available
             if (currentMeeting.userSettings) {
                 isMicOn = currentMeeting.userSettings.microphone;
                 isCameraOn = currentMeeting.userSettings.camera;
                 
                 // Update control buttons
-                const micIcon = document.querySelector('#mic-toggle i');
-                const cameraIcon = document.querySelector('#camera-toggle i');
-                
-                micIcon.className = isMicOn ? 'fas fa-microphone' : 'fas fa-microphone-slash';
-                cameraIcon.className = isCameraOn ? 'fas fa-video' : 'fas fa-video-slash';
+                updateControlButtons();
             }
             
             // Initialize video and audio
@@ -1722,6 +1874,28 @@
             setupMeetingListeners();
             
             showPage('meeting');
+        }
+
+        // Update control buttons
+        function updateControlButtons() {
+            const micToggle = document.getElementById('mic-toggle');
+            const cameraToggle = document.getElementById('camera-toggle');
+            
+            if (isMicOn) {
+                micToggle.classList.add('active');
+                micToggle.querySelector('i').className = 'fas fa-microphone';
+            } else {
+                micToggle.classList.remove('active');
+                micToggle.querySelector('i').className = 'fas fa-microphone-slash';
+            }
+            
+            if (isCameraOn) {
+                cameraToggle.classList.add('active');
+                cameraToggle.querySelector('i').className = 'fas fa-video';
+            } else {
+                cameraToggle.classList.remove('active');
+                cameraToggle.querySelector('i').className = 'fas fa-video-slash';
+            }
         }
 
         // Initialize media devices
@@ -1737,7 +1911,11 @@
                 createLocalVideoElement();
                 
                 // Add local participant to the grid
-                addParticipantToGrid(currentUser.uid, currentUser.displayName || currentUser.email.split('@')[0], true);
+                const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+                const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
+                const isCreator = userId === currentMeeting.creator;
+                
+                addParticipantToGrid(userId, userName, true, isCreator);
                 
             } catch (error) {
                 console.error('Error accessing media devices:', error);
@@ -1745,7 +1923,11 @@
                 
                 // Create placeholder even if media access fails
                 createLocalVideoElement();
-                addParticipantToGrid(currentUser.uid, currentUser.displayName || currentUser.email.split('@')[0], true);
+                const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+                const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
+                const isCreator = userId === currentMeeting.creator;
+                
+                addParticipantToGrid(userId, userName, true, isCreator);
             }
         }
 
@@ -1754,9 +1936,10 @@
             const participantsGrid = document.getElementById('participants-grid');
             participantsGrid.innerHTML = '';
             
+            const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
             const videoContainer = document.createElement('div');
             videoContainer.className = 'participant-video';
-            videoContainer.id = `participant-${currentUser.uid}`;
+            videoContainer.id = `participant-${userId}`;
             
             if (localStream && isCameraOn) {
                 const videoElement = document.createElement('video');
@@ -1766,7 +1949,6 @@
                 videoElement.playsInline = true;
                 
                 videoContainer.appendChild(videoElement);
-                localVideoElement = videoElement;
             } else {
                 const placeholder = document.createElement('div');
                 placeholder.className = 'video-placeholder';
@@ -1776,14 +1958,18 @@
             
             const nameElement = document.createElement('div');
             nameElement.className = 'participant-name';
-            nameElement.textContent = `${currentUser.displayName || currentUser.email.split('@')[0]} (Вы)`;
+            
+            const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
+            const isCreator = userId === currentMeeting.creator;
+            
+            nameElement.innerHTML = `${userName} (Вы) ${isCreator ? '<span class="admin-badge">администратор</span>' : ''}`;
             
             videoContainer.appendChild(nameElement);
             participantsGrid.appendChild(videoContainer);
         }
 
         // Add participant to grid
-        function addParticipantToGrid(userId, userName, isLocal = false) {
+        function addParticipantToGrid(userId, userName, isLocal = false, isCreator = false) {
             if (isLocal) return; // Local participant is already added
             
             const participantsGrid = document.getElementById('participants-grid');
@@ -1802,7 +1988,7 @@
             
             const nameElement = document.createElement('div');
             nameElement.className = 'participant-name';
-            nameElement.textContent = userName;
+            nameElement.innerHTML = `${userName} ${isCreator ? '<span class="admin-badge">администратор</span>' : ''}`;
             
             videoContainer.appendChild(nameElement);
             participantsGrid.appendChild(videoContainer);
@@ -1834,6 +2020,14 @@
                 const message = snapshot.val();
                 addChatMessageToUI(message);
             });
+            
+            // Listen for meeting end
+            database.ref('meetings/' + currentMeeting.id + '/isActive').on('value', (snapshot) => {
+                if (!snapshot.exists() || !snapshot.val()) {
+                    alert('Встреча была завершена организатором');
+                    leaveMeeting();
+                }
+            });
         }
 
         // Update participants list
@@ -1851,11 +2045,14 @@
                     participantItem.className = 'participant-item';
                     
                     const isCreator = userId === currentMeeting.creator;
-                    const isYou = userId === currentUser.uid;
+                    const isYou = (userId === currentUser.uid) || (isGuest && userId === 'guest_' + generateMeetingId());
                     
                     participantItem.innerHTML = `
                         <div class="participant-avatar">${participant.name.charAt(0)}</div>
-                        <div>${participant.name} ${isYou ? '(Вы)' : ''} ${isCreator ? '(организатор)' : ''}</div>
+                        <div class="participant-info">
+                            <div>${participant.name} ${isYou ? '(Вы)' : ''}</div>
+                            ${isCreator ? '<div class="participant-role">администратор</div>' : ''}
+                        </div>
                     `;
                     
                     participantsList.appendChild(participantItem);
@@ -1870,8 +2067,11 @@
         function updateParticipantsGrid(participants) {
             for (const userId in participants) {
                 const participant = participants[userId];
-                if (participant.isOnline && userId !== currentUser.uid) {
-                    addParticipantToGrid(userId, participant.name);
+                const currentUserId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+                
+                if (participant.isOnline && userId !== currentUserId) {
+                    const isCreator = userId === currentMeeting.creator;
+                    addParticipantToGrid(userId, participant.name, false, isCreator);
                 } else if (!participant.isOnline) {
                     removeParticipantFromGrid(userId);
                 }
@@ -1883,11 +2083,17 @@
             const chatMessages = document.getElementById('chat-messages');
             const messageElement = document.createElement('div');
             
-            const isOwn = message.userId === currentUser.uid;
+            const currentUserId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+            const isOwn = message.userId === currentUserId;
+            const isCreator = message.userId === currentMeeting.creator;
+            
             messageElement.className = `message ${isOwn ? 'own' : ''}`;
             
             messageElement.innerHTML = `
-                <div class="message-sender">${isOwn ? 'Вы' : message.userName}</div>
+                <div class="message-sender">
+                    ${isOwn ? 'Вы' : message.userName}
+                    ${isCreator ? '<span class="message-sender-role">администратор</span>' : ''}
+                </div>
                 <div>${message.text}</div>
             `;
             
@@ -1925,7 +2131,7 @@
                             <p>Создана: ${new Date(meeting.createdAt).toLocaleDateString()}</p>
                             <div class="meeting-actions">
                                 <button class="btn btn-primary" onclick="joinMeetingById('${meetingId}')">Присоединиться</button>
-                                <button class="btn btn-secondary" onclick="copyMeetingIdToClipboard('${meetingId}')">Копировать ID</button>
+                                <button class="btn btn-secondary" onclick="copyMeetingLinkToClipboard('${meetingId}')">Копировать ссылку</button>
                             </div>
                         `;
                         
@@ -1954,9 +2160,26 @@
                 });
         }
 
+        // Copy meeting link to clipboard
+        function copyMeetingLinkToClipboard(meetingId) {
+            const meetingLink = window.location.origin + window.location.pathname + '?meeting=' + meetingId;
+            navigator.clipboard.writeText(meetingLink)
+                .then(() => {
+                    alert('Ссылка на встречу скопирована в буфер обмена');
+                })
+                .catch(err => {
+                    console.error('Ошибка копирования: ', err);
+                });
+        }
+
         // Copy meeting ID
         function copyMeetingId() {
             copyMeetingIdToClipboard(currentMeeting.id);
+        }
+
+        // Copy meeting link
+        function copyMeetingLink() {
+            copyMeetingLinkToClipboard(currentMeeting.id);
         }
 
         // Leave meeting
@@ -1973,7 +2196,8 @@
                 
                 // Remove user from participants
                 if (participantsRef) {
-                    database.ref('meetings/' + currentMeeting.id + '/participants/' + currentUser.uid + '/isOnline').set(false);
+                    const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+                    database.ref('meetings/' + currentMeeting.id + '/participants/' + userId + '/isOnline').set(false);
                     participantsRef.off();
                 }
                 
@@ -1982,40 +2206,120 @@
                 }
                 
                 currentMeeting = null;
-                showPage('dashboard');
+                isGuest = false;
+                
+                if (currentUser) {
+                    showPage('dashboard');
+                } else {
+                    showPage('home');
+                }
+            }
+        }
+
+        // End meeting for all participants
+        function endMeetingForAll() {
+            if (confirm('Вы уверены, что хотите завершить встречу для всех участников?')) {
+                // Set meeting as inactive
+                database.ref('meetings/' + currentMeeting.id + '/isActive').set(false)
+                    .then(() => {
+                        // Leave the meeting
+                        leaveMeeting();
+                    })
+                    .catch((error) => {
+                        alert('Ошибка при завершении встречи: ' + error.message);
+                    });
             }
         }
 
         // Toggle microphone
-        function toggleMic() {
+        async function toggleMic() {
             isMicOn = !isMicOn;
-            const micIcon = document.querySelector('#mic-toggle i');
             
-            if (localStream) {
+            if (!localStream) {
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: isCameraOn,
+                        audio: isMicOn
+                    });
+                    
+                    // Update video element if camera is on
+                    if (isCameraOn) {
+                        const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                        if (videoContainer) {
+                            const videoElement = videoContainer.querySelector('video');
+                            if (videoElement) {
+                                videoElement.srcObject = localStream;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error accessing media devices:', error);
+                    alert('Не удалось получить доступ к микрофону.');
+                    isMicOn = !isMicOn; // Revert change
+                    return;
+                }
+            } else {
                 localStream.getAudioTracks().forEach(track => {
                     track.enabled = isMicOn;
                 });
             }
             
-            if (isMicOn) {
-                micIcon.className = 'fas fa-microphone';
-            } else {
-                micIcon.className = 'fas fa-microphone-slash';
-            }
+            updateControlButtons();
         }
 
         // Toggle camera
-        function toggleCamera() {
+        async function toggleCamera() {
             isCameraOn = !isCameraOn;
-            const cameraIcon = document.querySelector('#camera-toggle i');
             
-            if (localStream) {
+            if (!localStream) {
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: isCameraOn,
+                        audio: isMicOn
+                    });
+                    
+                    // Update video element
+                    const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                    if (videoContainer) {
+                        const videoElement = videoContainer.querySelector('video');
+                        const placeholder = videoContainer.querySelector('.video-placeholder');
+                        
+                        if (isCameraOn && videoElement) {
+                            videoElement.srcObject = localStream;
+                            videoElement.style.display = 'block';
+                            if (placeholder) placeholder.style.display = 'none';
+                        } else if (isCameraOn) {
+                            const newVideoElement = document.createElement('video');
+                            newVideoElement.srcObject = localStream;
+                            newVideoElement.autoplay = true;
+                            newVideoElement.muted = true;
+                            newVideoElement.playsInline = true;
+                            newVideoElement.style.display = 'block';
+                            
+                            if (placeholder) {
+                                videoContainer.insertBefore(newVideoElement, placeholder);
+                                placeholder.style.display = 'none';
+                            } else {
+                                videoContainer.appendChild(newVideoElement);
+                            }
+                        } else {
+                            if (videoElement) videoElement.style.display = 'none';
+                            if (placeholder) placeholder.style.display = 'flex';
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error accessing media devices:', error);
+                    alert('Не удалось получить доступ к камере.');
+                    isCameraOn = !isCameraOn; // Revert change
+                    return;
+                }
+            } else {
                 localStream.getVideoTracks().forEach(track => {
                     track.enabled = isCameraOn;
                 });
                 
                 // Update video element visibility
-                const videoContainer = document.getElementById(`participant-${currentUser.uid}`);
+                const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
                 if (videoContainer) {
                     const videoElement = videoContainer.querySelector('video');
                     const placeholder = videoContainer.querySelector('.video-placeholder');
@@ -2030,11 +2334,7 @@
                 }
             }
             
-            if (isCameraOn) {
-                cameraIcon.className = 'fas fa-video';
-            } else {
-                cameraIcon.className = 'fas fa-video-slash';
-            }
+            updateControlButtons();
         }
 
         // Toggle screen sharing
@@ -2048,8 +2348,27 @@
                     });
                     
                     // Replace local video stream with screen share
-                    if (localVideoElement) {
-                        localVideoElement.srcObject = screenStream;
+                    const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                    if (videoContainer) {
+                        const videoElement = videoContainer.querySelector('video');
+                        const placeholder = videoContainer.querySelector('.video-placeholder');
+                        
+                        if (videoElement) {
+                            videoElement.srcObject = screenStream;
+                        } else {
+                            const newVideoElement = document.createElement('video');
+                            newVideoElement.srcObject = screenStream;
+                            newVideoElement.autoplay = true;
+                            newVideoElement.muted = true;
+                            newVideoElement.playsInline = true;
+                            
+                            if (placeholder) {
+                                videoContainer.insertBefore(newVideoElement, placeholder);
+                                placeholder.style.display = 'none';
+                            } else {
+                                videoContainer.appendChild(newVideoElement);
+                            }
+                        }
                     }
                     
                     isScreenSharing = true;
@@ -2065,8 +2384,20 @@
                     screenStream.getTracks().forEach(track => track.stop());
                     
                     // Restore local video stream
-                    if (localVideoElement && localStream) {
-                        localVideoElement.srcObject = localStream;
+                    const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                    if (videoContainer && localStream) {
+                        const videoElement = videoContainer.querySelector('video');
+                        const placeholder = videoContainer.querySelector('.video-placeholder');
+                        
+                        if (videoElement) {
+                            videoElement.srcObject = localStream;
+                        }
+                        
+                        // Show placeholder if camera is off
+                        if (!isCameraOn) {
+                            if (videoElement) videoElement.style.display = 'none';
+                            if (placeholder) placeholder.style.display = 'flex';
+                        }
                     }
                     
                     isScreenSharing = false;
@@ -2083,10 +2414,13 @@
             const message = chatInput.value.trim();
             
             if (message && currentMeeting) {
+                const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+                const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
+                
                 const messageData = {
                     text: message,
-                    userId: currentUser.uid,
-                    userName: currentUser.displayName || currentUser.email.split('@')[0],
+                    userId: userId,
+                    userName: userName,
                     timestamp: firebase.database.ServerValue.TIMESTAMP
                 };
                 
