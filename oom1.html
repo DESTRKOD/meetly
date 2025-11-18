@@ -13,6 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
     <style>
+        /* Стили остаются без изменений */
         :root {
             --primary-color: #2F6BFF;
             --primary-gradient: linear-gradient(135deg, #2F6BFF, #8A2BE2);
@@ -1428,11 +1429,22 @@
         let localUserId = '';
         let signalingRef = null;
 
-        // WebRTC configuration
+        // WebRTC configuration - добавлены TURN серверы для лучшей связности
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { 
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                { 
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
             ]
         };
 
@@ -2016,12 +2028,15 @@
                 return; // Connection already exists
             }
             
+            console.log('Creating peer connection for:', participantId);
+            
             const peerConnection = new RTCPeerConnection(configuration);
             peerConnections[participantId] = peerConnection;
             
             // Add local stream to connection
             if (localStream) {
                 localStream.getTracks().forEach(track => {
+                    console.log('Adding track:', track.kind);
                     peerConnection.addTrack(track, localStream);
                 });
             }
@@ -2036,6 +2051,7 @@
             // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
+                    console.log('Sending ICE candidate to:', participantId);
                     // Send ICE candidate to the other participant via Firebase
                     signalingRef.child(participantId).child('iceCandidates').push({
                         candidate: event.candidate,
@@ -2044,21 +2060,35 @@
                 }
             };
             
+            // Handle connection state changes
+            peerConnection.onconnectionstatechange = (event) => {
+                console.log('Connection state:', peerConnection.connectionState);
+                if (peerConnection.connectionState === 'connected') {
+                    console.log('Successfully connected to:', participantId);
+                }
+            };
+            
             // Create and send offer
             peerConnection.createOffer()
-                .then(offer => peerConnection.setLocalDescription(offer))
+                .then(offer => {
+                    console.log('Created offer for:', participantId);
+                    return peerConnection.setLocalDescription(offer);
+                })
                 .then(() => {
                     // Send offer to the other participant via Firebase
                     signalingRef.child(participantId).child('offer').set({
                         sdp: peerConnection.localDescription,
                         from: localUserId
                     });
+                    console.log('Sent offer to:', participantId);
                 })
                 .catch(error => console.error('Error creating offer:', error));
         }
 
         // Handle incoming offer
         async function handleOffer(fromUserId, offer) {
+            console.log('Received offer from:', fromUserId);
+            
             if (!peerConnections[fromUserId]) {
                 await createPeerConnection(fromUserId, 'Participant');
             }
@@ -2067,16 +2097,19 @@
             
             try {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                console.log('Set remote description from:', fromUserId);
                 
                 // Create and send answer
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
+                console.log('Created answer for:', fromUserId);
                 
                 // Send answer to the other participant via Firebase
                 signalingRef.child(fromUserId).child('answer').set({
                     sdp: answer,
                     from: localUserId
                 });
+                console.log('Sent answer to:', fromUserId);
                 
             } catch (error) {
                 console.error('Error handling offer:', error);
@@ -2085,10 +2118,12 @@
 
         // Handle incoming answer
         async function handleAnswer(fromUserId, answer) {
+            console.log('Received answer from:', fromUserId);
             const peerConnection = peerConnections[fromUserId];
             if (peerConnection) {
                 try {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    console.log('Set remote description (answer) from:', fromUserId);
                 } catch (error) {
                     console.error('Error setting remote description:', error);
                 }
@@ -2097,10 +2132,12 @@
 
         // Handle ICE candidate
         async function handleIceCandidate(fromUserId, candidate) {
+            console.log('Received ICE candidate from:', fromUserId);
             const peerConnection = peerConnections[fromUserId];
             if (peerConnection) {
                 try {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    console.log('Added ICE candidate from:', fromUserId);
                 } catch (error) {
                     console.error('Error adding ICE candidate:', error);
                 }
@@ -2113,12 +2150,10 @@
             
             // Clear only if this is the first time creating local video
             if (!document.getElementById(`participant-${localUserId}`)) {
-                participantsGrid.innerHTML = '';
-            } else {
-                // If element already exists, remove it first
-                const existingElement = document.getElementById(`participant-${localUserId}`);
-                if (existingElement) {
-                    existingElement.remove();
+                // Don't clear the grid completely, just remove existing local video if any
+                const existingLocal = document.getElementById(`participant-${localUserId}`);
+                if (existingLocal) {
+                    existingLocal.remove();
                 }
             }
             
@@ -2572,8 +2607,15 @@
                 if (!isScreenSharing) {
                     // Start screen sharing
                     screenStream = await navigator.mediaDevices.getDisplayMedia({
-                        video: true,
-                        audio: true
+                        video: {
+                            cursor: 'always',
+                            displaySurface: 'window'
+                        },
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            sampleRate: 44100
+                        }
                     });
                     
                     // Replace local video stream with screen share
@@ -2582,6 +2624,13 @@
                         const videoElement = videoContainer.querySelector('video');
                         if (videoElement) {
                             videoElement.srcObject = screenStream;
+                        } else {
+                            const newVideoElement = document.createElement('video');
+                            newVideoElement.srcObject = screenStream;
+                            newVideoElement.autoplay = true;
+                            newVideoElement.muted = true;
+                            newVideoElement.playsInline = true;
+                            videoContainer.appendChild(newVideoElement);
                         }
                     }
                     
@@ -2640,7 +2689,7 @@
             } catch (error) {
                 console.error('Error sharing screen:', error);
                 if (error.name !== 'NotAllowedError') {
-                    alert('Не удалось начать демонстрацию экрана');
+                    alert('Не удалось начать демонстрацию экрана: ' + error.message);
                 }
             }
         }
