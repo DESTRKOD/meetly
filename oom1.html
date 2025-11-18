@@ -410,13 +410,17 @@
             gap: 5px;
         }
 
+        .participant-name-wrapper {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+        }
+
         .admin-badge {
-            background: #4A5568;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 10px;
+            color: #CBD5E0;
             font-size: 10px;
             font-weight: 500;
+            margin-left: 2px;
         }
 
         .meeting-controls {
@@ -585,15 +589,20 @@
             font-size: 12px;
             margin-bottom: 4px;
             display: flex;
-            align-items: center;
-            gap: 5px;
+            align-items: baseline;
+            gap: 4px;
+        }
+
+        .message-sender-name {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
         }
 
         .message-sender-role {
+            color: #CBD5E0;
             font-size: 10px;
-            background: rgba(255, 255, 255, 0.2);
-            padding: 1px 4px;
-            border-radius: 8px;
+            font-weight: 500;
         }
 
         .chat-input {
@@ -890,6 +899,19 @@
             width: 100%;
             max-width: 400px;
             margin: 0 20px;
+        }
+
+        /* WebRTC connection status */
+        .connection-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            z-index: 10;
         }
 
         /* Media Queries */
@@ -1402,6 +1424,8 @@
         let isScreenSharing = false;
         let isGuest = false;
         let guestName = '';
+        let peerConnections = {};
+        let localUserId = '';
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
@@ -1448,6 +1472,14 @@
             // Check if there's a meeting ID in URL
             checkUrlForMeetingId();
         });
+
+        // WebRTC configuration
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
 
         // Check URL for meeting ID
         function checkUrlForMeetingId() {
@@ -1816,12 +1848,12 @@
                     }
                     
                     // Generate a unique ID for guest
-                    const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+                    localUserId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
                     const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
                     
                     // Add user to participants if not already there
-                    if (!currentMeeting.participants || !currentMeeting.participants[userId]) {
-                        return database.ref('meetings/' + meetingId + '/participants/' + userId).set({
+                    if (!currentMeeting.participants || !currentMeeting.participants[localUserId]) {
+                        return database.ref('meetings/' + meetingId + '/participants/' + localUserId).set({
                             name: userName,
                             joinedAt: firebase.database.ServerValue.TIMESTAMP,
                             isOnline: true,
@@ -1829,7 +1861,7 @@
                         });
                     } else {
                         // Update participant status
-                        return database.ref('meetings/' + meetingId + '/participants/' + userId + '/isOnline').set(true);
+                        return database.ref('meetings/' + meetingId + '/participants/' + localUserId + '/isOnline').set(true);
                     }
                 })
                 .then(() => {
@@ -1851,8 +1883,7 @@
             document.getElementById('sidebar-meeting-id').textContent = currentMeeting.id;
             
             // Show meeting ID only for the creator
-            const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
-            const isCreator = userId === currentMeeting.creator;
+            const isCreator = localUserId === currentMeeting.creator;
             if (isCreator) {
                 document.getElementById('meeting-id-display-container').style.display = 'flex';
                 document.getElementById('end-meeting-btn').style.display = 'block';
@@ -1911,11 +1942,13 @@
                 createLocalVideoElement();
                 
                 // Add local participant to the grid
-                const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
                 const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
-                const isCreator = userId === currentMeeting.creator;
+                const isCreator = localUserId === currentMeeting.creator;
                 
-                addParticipantToGrid(userId, userName, true, isCreator);
+                addParticipantToGrid(localUserId, userName, true, isCreator);
+                
+                // Initialize WebRTC connections with other participants
+                initializeWebRTC();
                 
             } catch (error) {
                 console.error('Error accessing media devices:', error);
@@ -1923,23 +1956,103 @@
                 
                 // Create placeholder even if media access fails
                 createLocalVideoElement();
-                const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
                 const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
-                const isCreator = userId === currentMeeting.creator;
+                const isCreator = localUserId === currentMeeting.creator;
                 
-                addParticipantToGrid(userId, userName, true, isCreator);
+                addParticipantToGrid(localUserId, userName, true, isCreator);
             }
+        }
+
+        // Initialize WebRTC connections
+        function initializeWebRTC() {
+            // Listen for new participants and create WebRTC connections
+            participantsRef.on('child_added', (snapshot) => {
+                const participantId = snapshot.key;
+                const participant = snapshot.val();
+                
+                if (participantId !== localUserId && participant.isOnline) {
+                    createPeerConnection(participantId, participant.name);
+                }
+            });
+        }
+
+        // Create WebRTC peer connection
+        function createPeerConnection(participantId, participantName) {
+            const peerConnection = new RTCPeerConnection(configuration);
+            peerConnections[participantId] = peerConnection;
+            
+            // Add local stream to connection
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+            }
+            
+            // Handle incoming stream
+            peerConnection.ontrack = (event) => {
+                const remoteStream = event.streams[0];
+                addRemoteVideoElement(participantId, participantName, remoteStream);
+            };
+            
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    // Send ICE candidate to the other participant via Firebase
+                    database.ref(`meetings/${currentMeeting.id}/participants/${localUserId}/iceCandidates/${participantId}`).push({
+                        candidate: event.candidate,
+                        from: localUserId
+                    });
+                }
+            };
+            
+            // Create and send offer
+            peerConnection.createOffer()
+                .then(offer => peerConnection.setLocalDescription(offer))
+                .then(() => {
+                    // Send offer to the other participant via Firebase
+                    database.ref(`meetings/${currentMeeting.id}/participants/${participantId}/offer`).set({
+                        type: 'offer',
+                        sdp: peerConnection.localDescription,
+                        from: localUserId
+                    });
+                })
+                .catch(error => console.error('Error creating offer:', error));
+                
+            // Listen for answers
+            database.ref(`meetings/${currentMeeting.id}/participants/${localUserId}/answer`).on('value', (snapshot) => {
+                const answer = snapshot.val();
+                if (answer && answer.from === participantId) {
+                    peerConnection.setRemoteDescription(new RTCSessionDescription(answer.sdp));
+                }
+            });
+            
+            // Listen for ICE candidates
+            database.ref(`meetings/${currentMeeting.id}/participants/${localUserId}/iceCandidates/${participantId}`).on('child_added', (snapshot) => {
+                const candidateData = snapshot.val();
+                if (candidateData.from === participantId) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(candidateData.candidate));
+                }
+            });
         }
 
         // Create local video element
         function createLocalVideoElement() {
             const participantsGrid = document.getElementById('participants-grid');
-            participantsGrid.innerHTML = '';
             
-            const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
+            // Clear only if this is the first time creating local video
+            if (!document.getElementById(`participant-${localUserId}`)) {
+                participantsGrid.innerHTML = '';
+            } else {
+                // If element already exists, remove it first
+                const existingElement = document.getElementById(`participant-${localUserId}`);
+                if (existingElement) {
+                    existingElement.remove();
+                }
+            }
+            
             const videoContainer = document.createElement('div');
             videoContainer.className = 'participant-video';
-            videoContainer.id = `participant-${userId}`;
+            videoContainer.id = `participant-${localUserId}`;
             
             if (localStream && isCameraOn) {
                 const videoElement = document.createElement('video');
@@ -1960,15 +2073,60 @@
             nameElement.className = 'participant-name';
             
             const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
-            const isCreator = userId === currentMeeting.creator;
+            const isCreator = localUserId === currentMeeting.creator;
             
-            nameElement.innerHTML = `${userName} (Вы) ${isCreator ? '<span class="admin-badge">администратор</span>' : ''}`;
+            nameElement.innerHTML = `
+                <div class="participant-name-wrapper">
+                    ${userName} (Вы)
+                    ${isCreator ? '<sup class="admin-badge">администратор</sup>' : ''}
+                </div>
+            `;
             
             videoContainer.appendChild(nameElement);
             participantsGrid.appendChild(videoContainer);
         }
 
-        // Add participant to grid
+        // Add remote video element
+        function addRemoteVideoElement(participantId, participantName, remoteStream) {
+            const participantsGrid = document.getElementById('participants-grid');
+            const existingParticipant = document.getElementById(`participant-${participantId}`);
+            
+            if (existingParticipant) {
+                // Update existing video element
+                const videoElement = existingParticipant.querySelector('video');
+                if (videoElement) {
+                    videoElement.srcObject = remoteStream;
+                }
+                return;
+            }
+            
+            const videoContainer = document.createElement('div');
+            videoContainer.className = 'participant-video';
+            videoContainer.id = `participant-${participantId}`;
+            
+            const videoElement = document.createElement('video');
+            videoElement.srcObject = remoteStream;
+            videoElement.autoplay = true;
+            videoElement.playsInline = true;
+            videoContainer.appendChild(videoElement);
+            
+            const nameElement = document.createElement('div');
+            nameElement.className = 'participant-name';
+            
+            const isCreator = participantId === currentMeeting.creator;
+            
+            nameElement.innerHTML = `
+                <div class="participant-name-wrapper">
+                    ${participantName}
+                    ${isCreator ? '<sup class="admin-badge">администратор</sup>' : ''}
+                </div>
+            `;
+            
+            videoContainer.appendChild(nameElement);
+            participantsGrid.appendChild(videoContainer);
+        }
+
+        // Add participant to grid (placeholder)
         function addParticipantToGrid(userId, userName, isLocal = false, isCreator = false) {
             if (isLocal) return; // Local participant is already added
             
@@ -1988,7 +2146,12 @@
             
             const nameElement = document.createElement('div');
             nameElement.className = 'participant-name';
-            nameElement.innerHTML = `${userName} ${isCreator ? '<span class="admin-badge">администратор</span>' : ''}`;
+            nameElement.innerHTML = `
+                <div class="participant-name-wrapper">
+                    ${userName}
+                    ${isCreator ? '<sup class="admin-badge">администратор</sup>' : ''}
+                </div>
+            `;
             
             videoContainer.appendChild(nameElement);
             participantsGrid.appendChild(videoContainer);
@@ -1999,6 +2162,12 @@
             const participantElement = document.getElementById(`participant-${userId}`);
             if (participantElement) {
                 participantElement.remove();
+            }
+            
+            // Close WebRTC connection
+            if (peerConnections[userId]) {
+                peerConnections[userId].close();
+                delete peerConnections[userId];
             }
         }
 
@@ -2045,7 +2214,7 @@
                     participantItem.className = 'participant-item';
                     
                     const isCreator = userId === currentMeeting.creator;
-                    const isYou = (userId === currentUser.uid) || (isGuest && userId === 'guest_' + generateMeetingId());
+                    const isYou = userId === localUserId;
                     
                     participantItem.innerHTML = `
                         <div class="participant-avatar">${participant.name.charAt(0)}</div>
@@ -2067,11 +2236,14 @@
         function updateParticipantsGrid(participants) {
             for (const userId in participants) {
                 const participant = participants[userId];
-                const currentUserId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
                 
-                if (participant.isOnline && userId !== currentUserId) {
+                if (participant.isOnline && userId !== localUserId) {
                     const isCreator = userId === currentMeeting.creator;
-                    addParticipantToGrid(userId, participant.name, false, isCreator);
+                    // WebRTC will handle adding the actual video element
+                    // For now, just ensure the placeholder is there
+                    if (!document.getElementById(`participant-${userId}`)) {
+                        addParticipantToGrid(userId, participant.name, false, isCreator);
+                    }
                 } else if (!participant.isOnline) {
                     removeParticipantFromGrid(userId);
                 }
@@ -2083,16 +2255,17 @@
             const chatMessages = document.getElementById('chat-messages');
             const messageElement = document.createElement('div');
             
-            const currentUserId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
-            const isOwn = message.userId === currentUserId;
+            const isOwn = message.userId === localUserId;
             const isCreator = message.userId === currentMeeting.creator;
             
             messageElement.className = `message ${isOwn ? 'own' : ''}`;
             
             messageElement.innerHTML = `
                 <div class="message-sender">
-                    ${isOwn ? 'Вы' : message.userName}
-                    ${isCreator ? '<span class="message-sender-role">администратор</span>' : ''}
+                    <div class="message-sender-name">
+                        ${isOwn ? 'Вы' : message.userName}
+                        ${isCreator ? '<sup class="message-sender-role">администратор</sup>' : ''}
+                    </div>
                 </div>
                 <div>${message.text}</div>
             `;
@@ -2194,10 +2367,15 @@
                     screenStream.getTracks().forEach(track => track.stop());
                 }
                 
+                // Close all WebRTC connections
+                Object.keys(peerConnections).forEach(participantId => {
+                    peerConnections[participantId].close();
+                });
+                peerConnections = {};
+                
                 // Remove user from participants
                 if (participantsRef) {
-                    const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
-                    database.ref('meetings/' + currentMeeting.id + '/participants/' + userId + '/isOnline').set(false);
+                    database.ref('meetings/' + currentMeeting.id + '/participants/' + localUserId + '/isOnline').set(false);
                     participantsRef.off();
                 }
                 
@@ -2244,7 +2422,7 @@
                     
                     // Update video element if camera is on
                     if (isCameraOn) {
-                        const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                        const videoContainer = document.getElementById(`participant-${localUserId}`);
                         if (videoContainer) {
                             const videoElement = videoContainer.querySelector('video');
                             if (videoElement) {
@@ -2252,6 +2430,21 @@
                             }
                         }
                     }
+                    
+                    // Update WebRTC connections with new stream
+                    Object.keys(peerConnections).forEach(participantId => {
+                        const peerConnection = peerConnections[participantId];
+                        localStream.getAudioTracks().forEach(track => {
+                            const sender = peerConnection.getSenders().find(s => 
+                                s.track && s.track.kind === 'audio'
+                            );
+                            if (sender) {
+                                sender.replaceTrack(track);
+                            } else {
+                                peerConnection.addTrack(track, localStream);
+                            }
+                        });
+                    });
                 } catch (error) {
                     console.error('Error accessing media devices:', error);
                     alert('Не удалось получить доступ к микрофону.');
@@ -2279,7 +2472,7 @@
                     });
                     
                     // Update video element
-                    const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                    const videoContainer = document.getElementById(`participant-${localUserId}`);
                     if (videoContainer) {
                         const videoElement = videoContainer.querySelector('video');
                         const placeholder = videoContainer.querySelector('.video-placeholder');
@@ -2307,6 +2500,21 @@
                             if (placeholder) placeholder.style.display = 'flex';
                         }
                     }
+                    
+                    // Update WebRTC connections with new stream
+                    Object.keys(peerConnections).forEach(participantId => {
+                        const peerConnection = peerConnections[participantId];
+                        localStream.getVideoTracks().forEach(track => {
+                            const sender = peerConnection.getSenders().find(s => 
+                                s.track && s.track.kind === 'video'
+                            );
+                            if (sender) {
+                                sender.replaceTrack(track);
+                            } else {
+                                peerConnection.addTrack(track, localStream);
+                            }
+                        });
+                    });
                 } catch (error) {
                     console.error('Error accessing media devices:', error);
                     alert('Не удалось получить доступ к камере.');
@@ -2319,7 +2527,7 @@
                 });
                 
                 // Update video element visibility
-                const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                const videoContainer = document.getElementById(`participant-${localUserId}`);
                 if (videoContainer) {
                     const videoElement = videoContainer.querySelector('video');
                     const placeholder = videoContainer.querySelector('.video-placeholder');
@@ -2348,7 +2556,7 @@
                     });
                     
                     // Replace local video stream with screen share
-                    const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                    const videoContainer = document.getElementById(`participant-${localUserId}`);
                     if (videoContainer) {
                         const videoElement = videoContainer.querySelector('video');
                         const placeholder = videoContainer.querySelector('.video-placeholder');
@@ -2371,6 +2579,19 @@
                         }
                     }
                     
+                    // Update WebRTC connections with screen share
+                    Object.keys(peerConnections).forEach(participantId => {
+                        const peerConnection = peerConnections[participantId];
+                        screenStream.getTracks().forEach(track => {
+                            const sender = peerConnection.getSenders().find(s => 
+                                s.track && s.track.kind === track.kind
+                            );
+                            if (sender) {
+                                sender.replaceTrack(track);
+                            }
+                        });
+                    });
+                    
                     isScreenSharing = true;
                     
                     // Handle when user stops screen sharing
@@ -2384,7 +2605,7 @@
                     screenStream.getTracks().forEach(track => track.stop());
                     
                     // Restore local video stream
-                    const videoContainer = document.getElementById(`participant-${isGuest ? 'guest_' + generateMeetingId() : currentUser.uid}`);
+                    const videoContainer = document.getElementById(`participant-${localUserId}`);
                     if (videoContainer && localStream) {
                         const videoElement = videoContainer.querySelector('video');
                         const placeholder = videoContainer.querySelector('.video-placeholder');
@@ -2400,11 +2621,28 @@
                         }
                     }
                     
+                    // Restore WebRTC connections with local stream
+                    Object.keys(peerConnections).forEach(participantId => {
+                        const peerConnection = peerConnections[participantId];
+                        if (localStream) {
+                            localStream.getTracks().forEach(track => {
+                                const sender = peerConnection.getSenders().find(s => 
+                                    s.track && s.track.kind === track.kind
+                                );
+                                if (sender) {
+                                    sender.replaceTrack(track);
+                                }
+                            });
+                        }
+                    });
+                    
                     isScreenSharing = false;
                 }
             } catch (error) {
                 console.error('Error sharing screen:', error);
-                alert('Не удалось начать демонстрацию экрана');
+                if (error.name !== 'NotAllowedError') {
+                    alert('Не удалось начать демонстрацию экрана');
+                }
             }
         }
 
@@ -2414,12 +2652,11 @@
             const message = chatInput.value.trim();
             
             if (message && currentMeeting) {
-                const userId = isGuest ? 'guest_' + generateMeetingId() : currentUser.uid;
                 const userName = isGuest ? guestName : (currentUser.displayName || currentUser.email.split('@')[0]);
                 
                 const messageData = {
                     text: message,
-                    userId: userId,
+                    userId: localUserId,
                     userName: userName,
                     timestamp: firebase.database.ServerValue.TIMESTAMP
                 };
