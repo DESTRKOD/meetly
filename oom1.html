@@ -1426,6 +1426,15 @@
         let guestName = '';
         let peerConnections = {};
         let localUserId = '';
+        let signalingRef = null;
+
+        // WebRTC configuration
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
@@ -1472,14 +1481,6 @@
             // Check if there's a meeting ID in URL
             checkUrlForMeetingId();
         });
-
-        // WebRTC configuration
-        const configuration = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
 
         // Check URL for meeting ID
         function checkUrlForMeetingId() {
@@ -1965,6 +1966,9 @@
 
         // Initialize WebRTC connections
         function initializeWebRTC() {
+            // Set up signaling reference
+            signalingRef = database.ref('meetings/' + currentMeeting.id + '/signaling');
+            
             // Listen for new participants and create WebRTC connections
             participantsRef.on('child_added', (snapshot) => {
                 const participantId = snapshot.key;
@@ -1974,10 +1978,44 @@
                     createPeerConnection(participantId, participant.name);
                 }
             });
+            
+            // Set up signaling listeners
+            setupSignalingListeners();
+        }
+
+        // Set up signaling listeners
+        function setupSignalingListeners() {
+            // Listen for offers
+            signalingRef.child(localUserId).child('offer').on('value', (snapshot) => {
+                const offerData = snapshot.val();
+                if (offerData && offerData.from && peerConnections[offerData.from]) {
+                    handleOffer(offerData.from, offerData.sdp);
+                }
+            });
+            
+            // Listen for answers
+            signalingRef.child(localUserId).child('answer').on('value', (snapshot) => {
+                const answerData = snapshot.val();
+                if (answerData && answerData.from && peerConnections[answerData.from]) {
+                    handleAnswer(answerData.from, answerData.sdp);
+                }
+            });
+            
+            // Listen for ICE candidates
+            signalingRef.child(localUserId).child('iceCandidates').on('child_added', (snapshot) => {
+                const candidateData = snapshot.val();
+                if (candidateData && candidateData.from && peerConnections[candidateData.from]) {
+                    handleIceCandidate(candidateData.from, candidateData.candidate);
+                }
+            });
         }
 
         // Create WebRTC peer connection
         function createPeerConnection(participantId, participantName) {
+            if (peerConnections[participantId]) {
+                return; // Connection already exists
+            }
+            
             const peerConnection = new RTCPeerConnection(configuration);
             peerConnections[participantId] = peerConnection;
             
@@ -1990,6 +2028,7 @@
             
             // Handle incoming stream
             peerConnection.ontrack = (event) => {
+                console.log('Received remote stream from:', participantId);
                 const remoteStream = event.streams[0];
                 addRemoteVideoElement(participantId, participantName, remoteStream);
             };
@@ -1998,7 +2037,7 @@
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     // Send ICE candidate to the other participant via Firebase
-                    database.ref(`meetings/${currentMeeting.id}/participants/${localUserId}/iceCandidates/${participantId}`).push({
+                    signalingRef.child(participantId).child('iceCandidates').push({
                         candidate: event.candidate,
                         from: localUserId
                     });
@@ -2010,29 +2049,62 @@
                 .then(offer => peerConnection.setLocalDescription(offer))
                 .then(() => {
                     // Send offer to the other participant via Firebase
-                    database.ref(`meetings/${currentMeeting.id}/participants/${participantId}/offer`).set({
-                        type: 'offer',
+                    signalingRef.child(participantId).child('offer').set({
                         sdp: peerConnection.localDescription,
                         from: localUserId
                     });
                 })
                 .catch(error => console.error('Error creating offer:', error));
-                
-            // Listen for answers
-            database.ref(`meetings/${currentMeeting.id}/participants/${localUserId}/answer`).on('value', (snapshot) => {
-                const answer = snapshot.val();
-                if (answer && answer.from === participantId) {
-                    peerConnection.setRemoteDescription(new RTCSessionDescription(answer.sdp));
-                }
-            });
+        }
+
+        // Handle incoming offer
+        async function handleOffer(fromUserId, offer) {
+            if (!peerConnections[fromUserId]) {
+                await createPeerConnection(fromUserId, 'Participant');
+            }
             
-            // Listen for ICE candidates
-            database.ref(`meetings/${currentMeeting.id}/participants/${localUserId}/iceCandidates/${participantId}`).on('child_added', (snapshot) => {
-                const candidateData = snapshot.val();
-                if (candidateData.from === participantId) {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(candidateData.candidate));
+            const peerConnection = peerConnections[fromUserId];
+            
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                
+                // Create and send answer
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                // Send answer to the other participant via Firebase
+                signalingRef.child(fromUserId).child('answer').set({
+                    sdp: answer,
+                    from: localUserId
+                });
+                
+            } catch (error) {
+                console.error('Error handling offer:', error);
+            }
+        }
+
+        // Handle incoming answer
+        async function handleAnswer(fromUserId, answer) {
+            const peerConnection = peerConnections[fromUserId];
+            if (peerConnection) {
+                try {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                } catch (error) {
+                    console.error('Error setting remote description:', error);
                 }
-            });
+            }
+        }
+
+        // Handle ICE candidate
+        async function handleIceCandidate(fromUserId, candidate) {
+            const peerConnection = peerConnections[fromUserId];
+            if (peerConnection) {
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (error) {
+                    console.error('Error adding ICE candidate:', error);
+                }
+            }
         }
 
         // Create local video element
@@ -2096,6 +2168,20 @@
                 const videoElement = existingParticipant.querySelector('video');
                 if (videoElement) {
                     videoElement.srcObject = remoteStream;
+                } else {
+                    // Create video element if it doesn't exist
+                    const newVideoElement = document.createElement('video');
+                    newVideoElement.srcObject = remoteStream;
+                    newVideoElement.autoplay = true;
+                    newVideoElement.playsInline = true;
+                    
+                    const placeholder = existingParticipant.querySelector('.video-placeholder');
+                    if (placeholder) {
+                        existingParticipant.insertBefore(newVideoElement, placeholder);
+                        placeholder.remove();
+                    } else {
+                        existingParticipant.appendChild(newVideoElement);
+                    }
                 }
                 return;
             }
@@ -2383,6 +2469,12 @@
                     chatRef.off();
                 }
                 
+                // Remove signaling data
+                if (signalingRef) {
+                    signalingRef.child(localUserId).remove();
+                    signalingRef.off();
+                }
+                
                 currentMeeting = null;
                 isGuest = false;
                 
@@ -2413,47 +2505,21 @@
         async function toggleMic() {
             isMicOn = !isMicOn;
             
-            if (!localStream) {
-                try {
-                    localStream = await navigator.mediaDevices.getUserMedia({
-                        video: isCameraOn,
-                        audio: isMicOn
-                    });
-                    
-                    // Update video element if camera is on
-                    if (isCameraOn) {
-                        const videoContainer = document.getElementById(`participant-${localUserId}`);
-                        if (videoContainer) {
-                            const videoElement = videoContainer.querySelector('video');
-                            if (videoElement) {
-                                videoElement.srcObject = localStream;
-                            }
-                        }
-                    }
-                    
-                    // Update WebRTC connections with new stream
-                    Object.keys(peerConnections).forEach(participantId => {
-                        const peerConnection = peerConnections[participantId];
-                        localStream.getAudioTracks().forEach(track => {
-                            const sender = peerConnection.getSenders().find(s => 
-                                s.track && s.track.kind === 'audio'
-                            );
-                            if (sender) {
-                                sender.replaceTrack(track);
-                            } else {
-                                peerConnection.addTrack(track, localStream);
-                            }
-                        });
-                    });
-                } catch (error) {
-                    console.error('Error accessing media devices:', error);
-                    alert('Не удалось получить доступ к микрофону.');
-                    isMicOn = !isMicOn; // Revert change
-                    return;
-                }
-            } else {
+            if (localStream) {
                 localStream.getAudioTracks().forEach(track => {
                     track.enabled = isMicOn;
+                });
+                
+                // Update WebRTC connections
+                Object.values(peerConnections).forEach(peerConnection => {
+                    const senders = peerConnection.getSenders();
+                    senders.forEach(sender => {
+                        if (sender.track && sender.track.kind === 'audio') {
+                            if (localStream.getAudioTracks().length > 0) {
+                                sender.replaceTrack(localStream.getAudioTracks()[0]);
+                            }
+                        }
+                    });
                 });
             }
             
@@ -2464,64 +2530,7 @@
         async function toggleCamera() {
             isCameraOn = !isCameraOn;
             
-            if (!localStream) {
-                try {
-                    localStream = await navigator.mediaDevices.getUserMedia({
-                        video: isCameraOn,
-                        audio: isMicOn
-                    });
-                    
-                    // Update video element
-                    const videoContainer = document.getElementById(`participant-${localUserId}`);
-                    if (videoContainer) {
-                        const videoElement = videoContainer.querySelector('video');
-                        const placeholder = videoContainer.querySelector('.video-placeholder');
-                        
-                        if (isCameraOn && videoElement) {
-                            videoElement.srcObject = localStream;
-                            videoElement.style.display = 'block';
-                            if (placeholder) placeholder.style.display = 'none';
-                        } else if (isCameraOn) {
-                            const newVideoElement = document.createElement('video');
-                            newVideoElement.srcObject = localStream;
-                            newVideoElement.autoplay = true;
-                            newVideoElement.muted = true;
-                            newVideoElement.playsInline = true;
-                            newVideoElement.style.display = 'block';
-                            
-                            if (placeholder) {
-                                videoContainer.insertBefore(newVideoElement, placeholder);
-                                placeholder.style.display = 'none';
-                            } else {
-                                videoContainer.appendChild(newVideoElement);
-                            }
-                        } else {
-                            if (videoElement) videoElement.style.display = 'none';
-                            if (placeholder) placeholder.style.display = 'flex';
-                        }
-                    }
-                    
-                    // Update WebRTC connections with new stream
-                    Object.keys(peerConnections).forEach(participantId => {
-                        const peerConnection = peerConnections[participantId];
-                        localStream.getVideoTracks().forEach(track => {
-                            const sender = peerConnection.getSenders().find(s => 
-                                s.track && s.track.kind === 'video'
-                            );
-                            if (sender) {
-                                sender.replaceTrack(track);
-                            } else {
-                                peerConnection.addTrack(track, localStream);
-                            }
-                        });
-                    });
-                } catch (error) {
-                    console.error('Error accessing media devices:', error);
-                    alert('Не удалось получить доступ к камере.');
-                    isCameraOn = !isCameraOn; // Revert change
-                    return;
-                }
-            } else {
+            if (localStream) {
                 localStream.getVideoTracks().forEach(track => {
                     track.enabled = isCameraOn;
                 });
@@ -2540,6 +2549,18 @@
                         if (placeholder) placeholder.style.display = 'flex';
                     }
                 }
+                
+                // Update WebRTC connections
+                Object.values(peerConnections).forEach(peerConnection => {
+                    const senders = peerConnection.getSenders();
+                    senders.forEach(sender => {
+                        if (sender.track && sender.track.kind === 'video') {
+                            if (localStream.getVideoTracks().length > 0) {
+                                sender.replaceTrack(localStream.getVideoTracks()[0]);
+                            }
+                        }
+                    });
+                });
             }
             
             updateControlButtons();
@@ -2559,47 +2580,32 @@
                     const videoContainer = document.getElementById(`participant-${localUserId}`);
                     if (videoContainer) {
                         const videoElement = videoContainer.querySelector('video');
-                        const placeholder = videoContainer.querySelector('.video-placeholder');
-                        
                         if (videoElement) {
                             videoElement.srcObject = screenStream;
-                        } else {
-                            const newVideoElement = document.createElement('video');
-                            newVideoElement.srcObject = screenStream;
-                            newVideoElement.autoplay = true;
-                            newVideoElement.muted = true;
-                            newVideoElement.playsInline = true;
-                            
-                            if (placeholder) {
-                                videoContainer.insertBefore(newVideoElement, placeholder);
-                                placeholder.style.display = 'none';
-                            } else {
-                                videoContainer.appendChild(newVideoElement);
-                            }
                         }
                     }
                     
                     // Update WebRTC connections with screen share
-                    Object.keys(peerConnections).forEach(participantId => {
-                        const peerConnection = peerConnections[participantId];
-                        screenStream.getTracks().forEach(track => {
-                            const sender = peerConnection.getSenders().find(s => 
-                                s.track && s.track.kind === track.kind
-                            );
-                            if (sender) {
-                                sender.replaceTrack(track);
+                    Object.values(peerConnections).forEach(peerConnection => {
+                        const senders = peerConnection.getSenders();
+                        senders.forEach(sender => {
+                            if (sender.track && sender.track.kind === 'video') {
+                                sender.replaceTrack(screenStream.getVideoTracks()[0]);
                             }
                         });
                     });
                     
                     isScreenSharing = true;
                     
+                    // Update screen share button
+                    document.getElementById('screen-share').classList.add('active');
+                    document.getElementById('screen-share').innerHTML = '<i class="fas fa-stop"></i>';
+                    
                     // Handle when user stops screen sharing
-                    screenStream.getTracks().forEach(track => {
-                        track.onended = () => {
-                            toggleScreenShare();
-                        };
-                    });
+                    screenStream.getVideoTracks()[0].onended = () => {
+                        toggleScreenShare();
+                    };
+                    
                 } else {
                     // Stop screen sharing
                     screenStream.getTracks().forEach(track => track.stop());
@@ -2608,35 +2614,28 @@
                     const videoContainer = document.getElementById(`participant-${localUserId}`);
                     if (videoContainer && localStream) {
                         const videoElement = videoContainer.querySelector('video');
-                        const placeholder = videoContainer.querySelector('.video-placeholder');
-                        
                         if (videoElement) {
                             videoElement.srcObject = localStream;
-                        }
-                        
-                        // Show placeholder if camera is off
-                        if (!isCameraOn) {
-                            if (videoElement) videoElement.style.display = 'none';
-                            if (placeholder) placeholder.style.display = 'flex';
                         }
                     }
                     
                     // Restore WebRTC connections with local stream
-                    Object.keys(peerConnections).forEach(participantId => {
-                        const peerConnection = peerConnections[participantId];
-                        if (localStream) {
-                            localStream.getTracks().forEach(track => {
-                                const sender = peerConnection.getSenders().find(s => 
-                                    s.track && s.track.kind === track.kind
-                                );
-                                if (sender) {
-                                    sender.replaceTrack(track);
+                    Object.values(peerConnections).forEach(peerConnection => {
+                        const senders = peerConnection.getSenders();
+                        senders.forEach(sender => {
+                            if (sender.track && sender.track.kind === 'video') {
+                                if (localStream.getVideoTracks().length > 0) {
+                                    sender.replaceTrack(localStream.getVideoTracks()[0]);
                                 }
-                            });
-                        }
+                            }
+                        });
                     });
                     
                     isScreenSharing = false;
+                    
+                    // Update screen share button
+                    document.getElementById('screen-share').classList.remove('active');
+                    document.getElementById('screen-share').innerHTML = '<i class="fas fa-desktop"></i>';
                 }
             } catch (error) {
                 console.error('Error sharing screen:', error);
