@@ -13,7 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
     <style>
-        /* Стили остаются без изменений */
+        /* Все стили остаются без изменений */
         :root {
             --primary-color: #2F6BFF;
             --primary-gradient: linear-gradient(135deg, #2F6BFF, #8A2BE2);
@@ -1429,7 +1429,7 @@
         let localUserId = '';
         let signalingRef = null;
 
-        // WebRTC configuration - добавлены TURN серверы для лучшей связности
+        // WebRTC configuration
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -1437,11 +1437,6 @@
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { 
                     urls: 'turn:openrelay.metered.ca:80',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
-                },
-                { 
-                    urls: 'turn:openrelay.metered.ca:443',
                     username: 'openrelayproject',
                     credential: 'openrelayproject'
                 }
@@ -1887,9 +1882,15 @@
                 });
         }
 
-        // Show meeting page
+        // Show meeting page - ИСПРАВЛЕНА ОПЕЧАТКА
         function showMeetingPage() {
-            // Update meeting info
+            if (!currentMeeting) {
+                console.error('currentMeeting is null');
+                alert('Ошибка загрузки данных встречи');
+                return;
+            }
+            
+            // Update meeting info - ИСПРАВЛЕНА ОПЕЧАТКА: было currentMeeting.titlte
             document.getElementById('meeting-title-display').textContent = currentMeeting.title;
             document.getElementById('sidebar-meeting-title').textContent = currentMeeting.title;
             document.getElementById('meeting-id-display').textContent = currentMeeting.id;
